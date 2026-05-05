@@ -1,0 +1,39 @@
+:root {
+  --header-height: 66px;
+  --page-bg: #f7faf8;
+  --card-bg: #ffffff;
+  --surface-muted: #f1f5f3;
+  --text-primary: #1f2937;
+  --text-regular: #4b5563;
+  --text-secondary: #7b8494;
+  --border-color: #e6ece8;
+  --primary-color: #41b76a;
+  --primary-hover: #33a85c;
+  --primary-soft: rgba(65, 183, 106, 0.1);
+  --primary-border: rgba(65, 183, 106, 0.35);
+  --radius-card: 8px;
+  --shadow-header: 0 4px 16px rgba(26, 43, 34, 0.08);
+  --shadow-soft: 0 5px 18px rgba(31, 41, 55, 0.06);
+  --shadow-card: 0 12px 30px rgba(31, 41, 55, 0.08);
+  --shadow-card-hover: 0 18px 42px rgba(31, 41, 55, 0.13);
+  --shadow-avatar: 0 12px 24px rgba(31, 41, 55, 0.14);
+  --animation-fast: 0.2s ease;
+}
+
+html.dark {
+  --page-bg: #101413;
+  --card-bg: #171d1b;
+  --surface-muted: #202724;
+  --text-primary: #edf2ef;
+  --text-regular: #c5cec8;
+  --text-secondary: #8d9a93;
+  --border-color: #29332f;
+  --primary-color: #5bd482;
+  --primary-hover: #76e296;
+  --primary-soft: rgba(91, 212, 130, 0.12);
+  --primary-border: rgba(91, 212, 130, 0.36);
+  --shadow-header: 0 4px 16px rgba(0, 0, 0, 0.3);
+  --shadow-soft: 0 5px 18px rgba(0, 0, 0, 0.2);
+  --shadow-card: 0 12px 30px rgba(0, 0, 0, 0.24);
+  --shadow-card-hover: 0 18px 42px rgba(0, 0, 0, 0.34);
+}
