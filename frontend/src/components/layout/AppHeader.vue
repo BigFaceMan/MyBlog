@@ -6,10 +6,10 @@
     </RouterLink>
 
     <nav class="desktop-nav" :aria-label="t('nav.articles')">
-      <RouterLink class="nav-link" to="/search">
+      <button class="nav-link nav-link--button nav-link--search" type="button" @click="openSearch">
         <Search :size="17" />
         <span>{{ t("nav.search") }}</span>
-      </RouterLink>
+      </button>
       <RouterLink class="nav-link" to="/">
         <House :size="17" />
         <span>{{ t("nav.home") }}</span>
@@ -63,7 +63,7 @@
         <span class="drawer-title">{{ siteStore.profile?.name ?? "SSP Blog" }}</span>
       </template>
       <nav class="mobile-nav">
-        <RouterLink class="mobile-link" to="/search" @click="drawerVisible = false">{{ t("nav.search") }}</RouterLink>
+        <button class="mobile-link mobile-link--button" type="button" @click="openSearchFromDrawer">{{ t("nav.search") }}</button>
         <RouterLink class="mobile-link" to="/" @click="drawerVisible = false">{{ t("nav.home") }}</RouterLink>
         <RouterLink class="mobile-link" to="/about" @click="drawerVisible = false">{{ t("nav.about") }}</RouterLink>
         <RouterLink class="mobile-link" to="/categories" @click="drawerVisible = false">{{ t("nav.categories") }}</RouterLink>
@@ -77,9 +77,12 @@
       </nav>
     </el-drawer>
   </header>
+
+  <SearchModal v-model="searchModalVisible" />
 </template>
 
 <script setup lang="ts">
+import SearchModal from "@/components/search/SearchModal.vue";
 import { useAuthStore } from "@/stores/auth";
 import { useSiteStore } from "@/stores/site";
 import { ArrowDown, Collection, EditPen, House, Menu, Search, User, UserFilled } from "@element-plus/icons-vue";
@@ -93,6 +96,16 @@ const router = useRouter();
 const authStore = useAuthStore();
 const siteStore = useSiteStore();
 const drawerVisible = ref(false);
+const searchModalVisible = ref(false);
+
+const openSearch = () => {
+  searchModalVisible.value = true;
+};
+
+const openSearchFromDrawer = () => {
+  drawerVisible.value = false;
+  searchModalVisible.value = true;
+};
 
 const handleLogout = async () => {
   await authStore.logout();
@@ -207,6 +220,10 @@ const handleLogout = async () => {
   padding: 0;
   background: transparent;
   cursor: pointer;
+}
+
+.nav-link--search {
+  padding: 0 4px;
 }
 
 .mobile-menu {

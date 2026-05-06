@@ -1,5 +1,5 @@
 import { request } from "@/api/http";
-import type { Article, ArticlePayload, ArticleStatus, ArticleSummary, PaginatedResult, TaxonomyItem } from "@/types/blog";
+import type { Article, ArticlePayload, ArticleStatus, ArticleSummary, PaginatedResult, SiteProfile, TaxonomyItem } from "@/types/blog";
 
 export interface AdminArticleListParams {
   page?: number;
@@ -12,6 +12,35 @@ export interface TaxonomyPayload {
   name: string;
   slug?: string;
   description?: string;
+  parentId?: string | null;
+}
+
+export interface SiteProfilePayload {
+  name: string;
+  subtitle: string;
+  avatar: string;
+  announcement: string;
+  socials: SiteProfile["socials"];
+}
+
+export type AdminUserRole = "root" | "user";
+export type AdminUserStatus = "active" | "disabled";
+
+export interface AdminUser {
+  id: string;
+  username: string;
+  role: AdminUserRole;
+  status: AdminUserStatus;
+  createdAt: string;
+  updatedAt: string;
+  isRoot: boolean;
+}
+
+export interface AdminUserPayload {
+  username: string;
+  password: string;
+  role: AdminUserRole;
+  status: AdminUserStatus;
 }
 
 const toQuery = <T extends object>(params: T) => {
@@ -94,6 +123,36 @@ export function updateAdminCategory(id: string, payload: TaxonomyPayload) {
 
 export function deleteAdminCategory(id: string) {
   return request<{ id: string }>(`/api/admin/categories/${id}`, {
+    method: "DELETE"
+  });
+}
+
+export function getAdminSiteProfile() {
+  return request<SiteProfile>("/api/admin/site/profile");
+}
+
+export function updateAdminSiteProfile(payload: SiteProfilePayload) {
+  return request<SiteProfile>("/api/admin/site/profile", toJsonInit("PUT", payload));
+}
+
+export function getAdminUsers() {
+  return request<AdminUser[]>("/api/admin/users");
+}
+
+export function createAdminUser(payload: AdminUserPayload) {
+  return request<AdminUser>("/api/admin/users", toJsonInit("POST", payload));
+}
+
+export function updateAdminUser(id: string, payload: Partial<Pick<AdminUser, "role" | "status">>) {
+  return request<AdminUser>(`/api/admin/users/${id}`, toJsonInit("PATCH", payload));
+}
+
+export function updateAdminUserPassword(id: string, password: string) {
+  return request<AdminUser>(`/api/admin/users/${id}/password`, toJsonInit("PATCH", { password }));
+}
+
+export function deleteAdminUser(id: string) {
+  return request<{ id: string }>(`/api/admin/users/${id}`, {
     method: "DELETE"
   });
 }

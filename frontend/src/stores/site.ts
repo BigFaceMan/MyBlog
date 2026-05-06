@@ -15,8 +15,8 @@ export const useSiteStore = defineStore("site", {
     error: ""
   }),
   actions: {
-    async loadProfile() {
-      if (this.profile || this.loading) {
+    async loadProfile(force = false) {
+      if (!force && (this.profile || this.loading)) {
         return;
       }
 
@@ -30,6 +30,10 @@ export const useSiteStore = defineStore("site", {
       } finally {
         this.loading = false;
       }
+    },
+    setProfile(profile: SiteProfile) {
+      this.profile = profile;
+      this.error = "";
     }
   }
 });

@@ -26,6 +26,19 @@ export interface CategoryMutationInput {
   name: string;
   slug?: string;
   description?: string;
+  parentId?: string | null;
+}
+
+export interface SiteProfileMutationInput {
+  name: string;
+  subtitle: string;
+  avatar: string;
+  announcement: string;
+  socials: Array<{
+    type: SocialType;
+    label: string;
+    url: string;
+  }>;
 }
 
 export class RepositoryHttpError extends Error {
@@ -42,6 +55,7 @@ interface CategoryRow {
   name: string;
   slug: string;
   description: string | null;
+  parent_id: string | null;
 }
 
 interface TagRow {
@@ -67,6 +81,7 @@ interface ArticleRow {
   category_name: string;
   category_slug: string;
   category_description: string | null;
+  category_parent_id: string | null;
 }
 
 interface SiteConfigRow {
@@ -86,18 +101,70 @@ interface SocialLinkRow {
 }
 
 const database = getDatabase();
+const articlePreviewMaxLength = 160;
+const defaultSiteConfigId = "default-site";
+const socialSortOrder: SocialType[] = ["github", "mail", "rss", "twitter"];
 
-function toTaxonomyItem(item: { id: string; name: string; slug: string; description: string | null }): TaxonomyItem {
+function toTaxonomyItem(item: { id: string; name: string; slug: string; description: string | null; parent_id?: string | null }): TaxonomyItem {
   return {
     id: item.id,
     name: item.name,
     slug: item.slug,
-    ...(item.description ? { description: item.description } : {})
+    ...(item.description ? { description: item.description } : {}),
+    ...(item.parent_id ? { parentId: item.parent_id } : {})
   };
 }
 
+function normalizePreviewText(value: string) {
+  return value
+    .replace(/!\[[^\]]*]\([^)]*\)/g, " ")
+    .replace(/\[([^\]]+)]\([^)]*\)/g, "$1")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/[*_~#]+/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function stripMarkdownLine(line: string) {
+  return line
+    .replace(/^#{1,6}\s+/, "")
+    .replace(/^>\s?/, "")
+    .replace(/^\s{0,3}(?:[-*+]|\d+[.)])\s+/, "")
+    .trim();
+}
+
+function truncatePreview(value: string) {
+  const characters = Array.from(value);
+
+  if (characters.length <= articlePreviewMaxLength) {
+    return value;
+  }
+
+  return `${characters.slice(0, articlePreviewMaxLength).join("").trimEnd()}...`;
+}
+
+function createContentPreview(article: Article) {
+  const titleSignature = normalizePreviewText(article.title).toLowerCase();
+  const lines = article.content
+    .replace(/```[\s\S]*?```/g, " ")
+    .split(/\r?\n/)
+    .map(stripMarkdownLine)
+    .map(normalizePreviewText)
+    .filter((line) => line && line.toLowerCase() !== titleSignature);
+  const preview = lines.join(" ").replace(/\s+/g, " ").trim();
+
+  return truncatePreview(preview || article.excerpt);
+}
+
 function toSummary({ content: _content, ...article }: Article): ArticleSummary {
-  return article;
+  return {
+    ...article,
+    excerpt: createContentPreview({
+      ...article,
+      content: _content
+    })
+  };
 }
 
 function paginate<T>(items: T[], page: number, pageSize: number): PaginatedResult<T> {
@@ -183,7 +250,8 @@ function mapArticles(rows: ArticleRow[]) {
       id: row.category_id,
       name: row.category_name,
       slug: row.category_slug,
-      description: row.category_description
+      description: row.category_description,
+      parent_id: row.category_parent_id
     }),
     tags: tagMap.get(row.article_id) ?? [],
     readingMinutes: row.reading_minutes,
@@ -211,7 +279,8 @@ function queryArticleRows(whereClause: string, params: string[] = []) {
           c.id AS category_id,
           c.name AS category_name,
           c.slug AS category_slug,
-          c.description AS category_description
+          c.description AS category_description,
+          c.parent_id AS category_parent_id
         FROM articles a
         INNER JOIN categories c ON c.id = a.category_id
         WHERE ${whereClause}
@@ -314,7 +383,7 @@ function getCategoryRowById(categoryId: string) {
   return database
     .prepare(
       `
-        SELECT id, name, slug, description
+        SELECT id, name, slug, description, parent_id
         FROM categories
         WHERE id = ?
         LIMIT 1
@@ -327,7 +396,7 @@ function getCategoryByName(name: string) {
   const row = database
     .prepare(
       `
-        SELECT id, name, slug, description
+        SELECT id, name, slug, description, parent_id
         FROM categories
         WHERE lower(name) = lower(?)
         LIMIT 1
@@ -342,7 +411,7 @@ function getCategoryRowBySlug(slug: string) {
   return database
     .prepare(
       `
-        SELECT id, name, slug, description
+        SELECT id, name, slug, description, parent_id
         FROM categories
         WHERE slug = ?
         LIMIT 1
@@ -383,6 +452,90 @@ function buildAvailableCategorySlug(name: string, preferredSlug?: string, curren
     candidate = `${baseSlug}-${suffix}`;
     suffix += 1;
   }
+}
+
+function listCategoryRows() {
+  return database
+    .prepare(
+      `
+        SELECT id, name, slug, description, parent_id
+        FROM categories
+        ORDER BY name ASC
+      `
+    )
+    .all() as unknown as CategoryRow[];
+}
+
+function getDescendantCategoryIds(categoryId: string) {
+  const rows = listCategoryRows();
+  const childrenByParentId = new Map<string, CategoryRow[]>();
+
+  for (const row of rows) {
+    if (!row.parent_id) {
+      continue;
+    }
+
+    childrenByParentId.set(row.parent_id, [...(childrenByParentId.get(row.parent_id) ?? []), row]);
+  }
+
+  const descendantIds = new Set<string>();
+  const visit = (parentId: string) => {
+    for (const child of childrenByParentId.get(parentId) ?? []) {
+      if (descendantIds.has(child.id)) {
+        continue;
+      }
+
+      descendantIds.add(child.id);
+      visit(child.id);
+    }
+  };
+
+  visit(categoryId);
+  return descendantIds;
+}
+
+function resolveParentCategoryId(parentId: string | null | undefined, currentCategoryId?: string) {
+  const normalizedParentId = parentId?.trim() || null;
+
+  if (!normalizedParentId) {
+    return null;
+  }
+
+  const parent = getCategoryRowById(normalizedParentId);
+
+  if (!parent) {
+    throw new RepositoryHttpError("Parent category not found", 400);
+  }
+
+  if (currentCategoryId && normalizedParentId === currentCategoryId) {
+    throw new RepositoryHttpError("Category cannot be its own parent", 400);
+  }
+
+  if (currentCategoryId && getDescendantCategoryIds(currentCategoryId).has(normalizedParentId)) {
+    throw new RepositoryHttpError("Category cannot use its descendant as parent", 400);
+  }
+
+  return normalizedParentId;
+}
+
+function getCategoryAndDescendantSlugs(slug: string) {
+  const category = getCategoryRowBySlug(slug);
+
+  if (!category) {
+    return new Set([slug]);
+  }
+
+  const descendantIds = getDescendantCategoryIds(category.id);
+  const rows = listCategoryRows();
+  const slugs = new Set([category.slug]);
+
+  for (const row of rows) {
+    if (descendantIds.has(row.id)) {
+      slugs.add(row.slug);
+    }
+  }
+
+  return slugs;
 }
 
 function ensureCategoryExists(categoryId: string) {
@@ -471,8 +624,9 @@ export function listArticles(params: {
   keyword?: string;
 }) {
   const publishedArticles = mapArticles(queryPublishedArticleRows());
+  const categorySlugs = params.category ? getCategoryAndDescendantSlugs(params.category) : null;
   const filtered = publishedArticles.filter((article) => {
-    const categoryMatched = params.category ? article.category.slug === params.category : true;
+    const categoryMatched = categorySlugs ? categorySlugs.has(article.category.slug) : true;
     const tagMatched = params.tag ? article.tags.some((tag) => tag.slug === params.tag) : true;
 
     return categoryMatched && tagMatched && matchesKeyword(article, params.keyword);
@@ -735,15 +889,16 @@ export function createCategory(input: CategoryMutationInput) {
   const id = `category-${randomUUID()}`;
   const slug = buildAvailableCategorySlug(name, requestedSlug);
   const description = input.description?.trim() || null;
+  const parentId = resolveParentCategoryId(input.parentId);
 
   database
     .prepare(
       `
-        INSERT INTO categories (id, name, slug, description)
-        VALUES (?, ?, ?, ?)
+        INSERT INTO categories (id, name, slug, description, parent_id)
+        VALUES (?, ?, ?, ?, ?)
       `
     )
-    .run(id, name, slug, description);
+    .run(id, name, slug, description, parentId);
 
   const category = getCategoryById(id);
 
@@ -776,15 +931,17 @@ export function updateCategory(categoryId: string, input: CategoryMutationInput)
     throw new RepositoryHttpError("Category slug already exists", 409);
   }
 
+  const parentId = resolveParentCategoryId(input.parentId, categoryId);
+
   database
     .prepare(
       `
         UPDATE categories
-        SET name = ?, slug = ?, description = ?
+        SET name = ?, slug = ?, description = ?, parent_id = ?
         WHERE id = ?
       `
     )
-    .run(name, buildAvailableCategorySlug(name, requestedSlug, categoryId), input.description?.trim() || null, categoryId);
+    .run(name, buildAvailableCategorySlug(name, requestedSlug, categoryId), input.description?.trim() || null, parentId, categoryId);
 
   return getCategoryById(categoryId);
 }
@@ -802,6 +959,14 @@ export function deleteCategory(categoryId: string) {
     throw new RepositoryHttpError("Category is used by articles", 409);
   }
 
+  const childUsage = database
+    .prepare("SELECT COUNT(*) AS count FROM categories WHERE parent_id = ?")
+    .get(categoryId) as { count: number };
+
+  if (Number(childUsage.count) > 0) {
+    throw new RepositoryHttpError("Category has child categories", 409);
+  }
+
   database.prepare("DELETE FROM categories WHERE id = ?").run(categoryId);
 
   return {
@@ -810,15 +975,7 @@ export function deleteCategory(categoryId: string) {
 }
 
 function listCategoriesWithCounts(publishedOnly: boolean) {
-  const categoryRows = database
-    .prepare(
-      `
-        SELECT id, name, slug, description
-        FROM categories
-        ORDER BY name ASC
-      `
-    )
-    .all() as unknown as CategoryRow[];
+  const categoryRows = listCategoryRows();
   const whereClause = publishedOnly ? "WHERE status = 'published'" : "";
   const counts = database
     .prepare(
@@ -832,10 +989,34 @@ function listCategoriesWithCounts(publishedOnly: boolean) {
     .all() as Array<{ category_id: string; count: number }>;
   const countMap = new Map(counts.map((row) => [row.category_id, Number(row.count)]));
 
-  return categoryRows.map((category) => ({
-    ...toTaxonomyItem(category),
-    count: countMap.get(category.id) ?? 0
-  }));
+  const childrenByParentId = new Map<string, CategoryRow[]>();
+  const rootCategories: CategoryRow[] = [];
+
+  for (const category of categoryRows) {
+    if (!category.parent_id) {
+      rootCategories.push(category);
+      continue;
+    }
+
+    childrenByParentId.set(category.parent_id, [...(childrenByParentId.get(category.parent_id) ?? []), category]);
+  }
+
+  const countCategoryArticles = (categoryId: string): number =>
+    (countMap.get(categoryId) ?? 0) +
+    (childrenByParentId.get(categoryId) ?? []).reduce((sum, child) => sum + countCategoryArticles(child.id), 0);
+
+  const buildCategory = (category: CategoryRow, depth: number): TaxonomyItem => {
+    const children = (childrenByParentId.get(category.id) ?? []).map((child) => buildCategory(child, depth + 1));
+
+    return {
+      ...toTaxonomyItem(category),
+      count: countCategoryArticles(category.id),
+      depth,
+      ...(children.length ? { children } : {})
+    };
+  };
+
+  return rootCategories.map((category) => buildCategory(category, 0));
 }
 
 function listTagsWithCounts(publishedOnly: boolean) {
@@ -958,4 +1139,81 @@ export function getSiteProfile() {
     profile,
     socialLinks
   };
+}
+
+export function toSiteProfileResponse() {
+  const { profile, socialLinks } = getSiteProfile();
+  const stats = getPublishedCounts();
+
+  return {
+    name: profile?.name ?? "SSP Blog",
+    subtitle: profile?.subtitle ?? "",
+    avatar: profile?.avatar ?? "",
+    announcement: profile?.announcement ?? "",
+    socials: socialLinks.map((social) => ({
+      type: social.type,
+      label: social.label,
+      url: social.url
+    })),
+    stats
+  } satisfies SiteProfile;
+}
+
+export function updateSiteProfile(input: SiteProfileMutationInput) {
+  const currentProfile = database
+    .prepare(
+      `
+        SELECT id
+        FROM site_configs
+        LIMIT 1
+      `
+    )
+    .get() as { id: string } | undefined;
+  const profileId = currentProfile?.id ?? defaultSiteConfigId;
+
+  if (currentProfile) {
+    database
+      .prepare(
+        `
+          UPDATE site_configs
+          SET name = ?, subtitle = ?, avatar = ?, announcement = ?
+          WHERE id = ?
+        `
+      )
+      .run(input.name, input.subtitle, input.avatar, input.announcement, profileId);
+  } else {
+    database
+      .prepare(
+        `
+          INSERT INTO site_configs (id, name, subtitle, avatar, announcement)
+          VALUES (?, ?, ?, ?, ?)
+        `
+      )
+      .run(profileId, input.name, input.subtitle, input.avatar, input.announcement);
+  }
+
+  const uniqueSocials = new Map<SocialType, { type: SocialType; label: string; url: string }>();
+
+  for (const social of input.socials) {
+    uniqueSocials.set(social.type, social);
+  }
+
+  const insertSocialLink = database.prepare(`
+    INSERT INTO social_links (id, type, label, url, site_config_id)
+    VALUES (?, ?, ?, ?, ?)
+  `);
+
+  database.prepare("DELETE FROM social_links WHERE site_config_id = ?").run(profileId);
+
+  for (const type of socialSortOrder) {
+    const social = uniqueSocials.get(type);
+
+    if (!social || !social.label || !social.url) {
+      continue;
+    }
+
+    insertSocialLink.run(`social-${type}`, social.type, social.label, social.url, profileId);
+  }
+
+  return toSiteProfileResponse();
 }

@@ -1,11 +1,10 @@
 <template>
-  <PageShell :with-sidebar="false">
+  <AdminLayout>
     <section class="editor-page">
       <header class="editor-header">
         <div>
           <p>后台</p>
           <h1>{{ isEdit ? "编辑文章" : "新建文章" }}</h1>
-          <AdminNav class="editor-header__nav" />
         </div>
         <div class="header-actions">
           <el-button @click="router.push('/admin')">返回列表</el-button>
@@ -55,7 +54,7 @@
             </el-form-item>
             <el-form-item label="分类">
               <el-select v-model="form.categoryId" placeholder="选择分类">
-                <el-option v-for="category in categories" :key="category.id" :label="category.name" :value="category.id" />
+                <el-option v-for="category in flatCategories" :key="category.id" :label="taxonomyOptionLabel(category)" :value="category.id" />
               </el-select>
             </el-form-item>
           </div>
@@ -87,17 +86,17 @@
         </aside>
       </section>
     </section>
-  </PageShell>
+  </AdminLayout>
 </template>
 
 <script setup lang="ts">
 import { createAdminArticle, createAdminTag, getAdminArticle, updateAdminArticle } from "@/api/admin";
-import AdminNav from "@/components/admin/AdminNav.vue";
+import AdminLayout from "@/components/admin/AdminLayout.vue";
 import { getCategories, getTags } from "@/api/blog";
 import MarkdownRenderer from "@/components/blog/MarkdownRenderer.vue";
 import StateBlock from "@/components/common/StateBlock.vue";
-import PageShell from "@/components/layout/PageShell.vue";
 import type { Article, ArticlePayload, ArticleStatus, TaxonomyItem } from "@/types/blog";
+import { flattenTaxonomy, taxonomyOptionLabel } from "@/utils/taxonomy";
 import { ElMessage } from "element-plus";
 import { computed, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
@@ -114,6 +113,7 @@ const slugTouched = ref(false);
 const autoSlugSeed = ref(`post-${Date.now()}`);
 const isEdit = computed(() => Boolean(route.params.id));
 const articleId = computed(() => String(route.params.id ?? ""));
+const flatCategories = computed(() => flattenTaxonomy(categories.value));
 
 const createEmptyForm = (): ArticlePayload => ({
   title: "",
@@ -163,8 +163,8 @@ const toPayload = (article: Article): ArticlePayload => ({
 });
 
 const applyDefaultCategory = () => {
-  if (!form.categoryId && categories.value[0]) {
-    form.categoryId = categories.value[0].id;
+  if (!form.categoryId && flatCategories.value[0]) {
+    form.categoryId = flatCategories.value[0].id;
   }
 };
 
@@ -381,10 +381,6 @@ watch(
   color: var(--text-primary);
   font-size: 30px;
   line-height: 1.15;
-}
-
-.editor-header__nav {
-  margin-top: 14px;
 }
 
 .header-actions {

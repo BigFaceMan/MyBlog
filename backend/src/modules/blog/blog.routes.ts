@@ -84,7 +84,8 @@ const categoryPayloadSchema = z.object({
     .max(80)
     .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "Category slug can only contain lowercase letters, numbers and hyphens")
     .optional(),
-  description: z.string().trim().max(200).optional()
+  description: z.string().trim().max(200).optional(),
+  parentId: z.string().trim().nullable().optional()
 });
 
 export async function registerBlogRoutes(app: FastifyInstance) {

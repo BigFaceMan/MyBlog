@@ -9,7 +9,10 @@ export interface TaxonomyItem {
   name: string;
   slug: string;
   description?: string;
+  parentId?: string | null;
   count?: number;
+  depth?: number;
+  children?: TaxonomyItem[];
 }
 
 export type ArticleStatus = "published" | "draft";

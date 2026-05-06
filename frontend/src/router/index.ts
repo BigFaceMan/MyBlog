@@ -84,6 +84,16 @@ export const router = createRouter({
       component: () => import("@/views/admin/AdminTaxonomyView.vue")
     },
     {
+      path: "/admin/users",
+      name: "admin-users",
+      component: () => import("@/views/admin/AdminUserView.vue")
+    },
+    {
+      path: "/admin/profile",
+      name: "admin-profile",
+      component: () => import("@/views/admin/AdminProfileView.vue")
+    },
+    {
       path: "/admin/articles/new",
       name: "admin-article-new",
       component: () => import("@/views/admin/AdminArticleEditorView.vue")

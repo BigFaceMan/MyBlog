@@ -1,16 +1,16 @@
 <template>
   <div class="article-meta">
     <span class="article-meta__item">
-      <Calendar :size="15" />
+      <Calendar :size="13" />
       {{ t("common.created") }} {{ formatDate(article.createdAt) }}
     </span>
     <RouterLink class="article-meta__item article-meta__link" :to="`/categories/${article.category.slug}`">
-      <Folder :size="15" />
+      <Folder :size="13" />
       {{ article.category.name }}
     </RouterLink>
     <span class="article-meta__tags">
       <RouterLink v-for="tag in article.tags" :key="tag.id" class="article-meta__tag" :to="`/tags/${tag.slug}`">
-        <PriceTag :size="14" />
+        <PriceTag :size="12" />
         {{ tag.name }}
       </RouterLink>
     </span>
@@ -35,10 +35,11 @@ const { t } = useI18n();
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 9px 12px;
+  gap: 7px 10px;
   color: var(--text-secondary);
-  font-size: 13px;
-  line-height: 1.4;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.35;
 }
 
 .article-meta__item,
@@ -46,8 +47,21 @@ const { t } = useI18n();
 .article-meta__tags {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 4px;
   min-width: 0;
+}
+
+.article-meta :deep(svg) {
+  display: block;
+  flex: 0 0 13px;
+  width: 13px;
+  height: 13px;
+}
+
+.article-meta__tag :deep(svg) {
+  flex-basis: 12px;
+  width: 12px;
+  height: 12px;
 }
 
 .article-meta__link,
@@ -64,6 +78,6 @@ const { t } = useI18n();
 
 .article-meta__tags {
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px 8px;
 }
 </style>

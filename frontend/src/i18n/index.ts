@@ -6,8 +6,12 @@ const messages = {
       loading: "正在加载",
       retry: "重试",
       empty: "暂无内容",
+      close: "关闭",
       readMore: "阅读全文",
       created: "Created",
+      wordCount: "字数：{count}",
+      readingTime: "阅读时间：{count} 分钟",
+      postViews: "观看次数：{count}",
       minRead: "{count} 分钟阅读",
       views: "{count} 次浏览"
     },
@@ -31,6 +35,7 @@ const messages = {
       categories: "Categories",
       follow: "Follow Me",
       announcement: "Announcement",
+      contents: "Contents",
       recentPosts: "Recent Posts",
       taxonomy: "Categories & Tags"
     },

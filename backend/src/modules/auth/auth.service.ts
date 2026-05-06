@@ -8,12 +8,14 @@ const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7;
 const database = getDatabase();
 
 export type UserRole = "root" | "user";
+export type UserStatus = "active" | "disabled";
 
 interface UserRow {
   id: string;
   username: string;
   password_hash: string;
   role: UserRole;
+  status: UserStatus;
   created_at: string;
   updated_at: string;
 }
@@ -23,6 +25,7 @@ interface UserSessionRow {
   user_id: string;
   username: string;
   role: UserRole;
+  status: UserStatus;
   expires_at: string;
 }
 
@@ -30,6 +33,28 @@ export interface AuthUser {
   username: string;
   role: UserRole;
   isRoot: boolean;
+}
+
+export interface AdminUser {
+  id: string;
+  username: string;
+  role: UserRole;
+  status: UserStatus;
+  createdAt: string;
+  updatedAt: string;
+  isRoot: boolean;
+}
+
+export interface AdminUserMutationInput {
+  username: string;
+  password: string;
+  role: UserRole;
+  status?: UserStatus;
+}
+
+export interface AdminUserUpdateInput {
+  role?: UserRole;
+  status?: UserStatus;
 }
 
 export class AuthHttpError extends Error {
@@ -69,6 +94,18 @@ function toAuthUser(row: Pick<UserRow, "username" | "role">): AuthUser {
   return {
     username: row.username,
     role: row.role,
+    isRoot: row.role === "root"
+  };
+}
+
+function toAdminUser(row: UserRow): AdminUser {
+  return {
+    id: row.id,
+    username: row.username,
+    role: row.role,
+    status: row.status,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
     isRoot: row.role === "root"
   };
 }
@@ -121,13 +158,57 @@ function findUserByUsername(username: string) {
   return database
     .prepare(
       `
-        SELECT id, username, password_hash, role, created_at, updated_at
+        SELECT id, username, password_hash, role, status, created_at, updated_at
         FROM users
         WHERE username = ?
         LIMIT 1
       `
     )
     .get(normalizeUsername(username)) as UserRow | undefined;
+}
+
+function findUserById(userId: string) {
+  return database
+    .prepare(
+      `
+        SELECT id, username, password_hash, role, status, created_at, updated_at
+        FROM users
+        WHERE id = ?
+        LIMIT 1
+      `
+    )
+    .get(userId) as UserRow | undefined;
+}
+
+function countActiveRootUsers() {
+  const row = database
+    .prepare("SELECT COUNT(*) AS count FROM users WHERE role = 'root' AND status = 'active'")
+    .get() as { count: number };
+
+  return Number(row.count);
+}
+
+function ensureCanModifyUser(user: UserRow, currentUsername: string, next?: AdminUserUpdateInput) {
+  if (user.username === normalizeUsername(currentUsername)) {
+    throw new AuthHttpError("Cannot modify your own account", 400);
+  }
+
+  const nextRole = next?.role ?? user.role;
+  const nextStatus = next?.status ?? user.status;
+
+  if (user.role === "root" && user.status === "active" && (nextRole !== "root" || nextStatus !== "active") && countActiveRootUsers() <= 1) {
+    throw new AuthHttpError("Cannot remove the last active root user", 400);
+  }
+}
+
+function ensureUserExists(userId: string) {
+  const user = findUserById(userId);
+
+  if (!user) {
+    throw new AuthHttpError("User not found", 404);
+  }
+
+  return user;
 }
 
 async function resolveConfiguredRootPasswordHash() {
@@ -154,7 +235,7 @@ export async function ensureRootUser() {
       .prepare(
         `
           UPDATE users
-          SET role = 'root', password_hash = ?, updated_at = ?
+          SET role = 'root', status = 'active', password_hash = ?, updated_at = ?
           WHERE id = ?
         `
       )
@@ -172,8 +253,8 @@ export async function ensureRootUser() {
   database
     .prepare(
       `
-        INSERT INTO users (id, username, password_hash, role, created_at, updated_at)
-        VALUES (?, ?, ?, 'root', ?, ?)
+        INSERT INTO users (id, username, password_hash, role, status, created_at, updated_at)
+        VALUES (?, ?, ?, 'root', 'active', ?, ?)
       `
     )
     .run(randomUUID(), username, passwordHash, now, now);
@@ -199,6 +280,7 @@ export async function registerUser(username: string, password: string) {
     username: normalizedUsername,
     password_hash: await hashPassword(password),
     role: "user",
+    status: "active",
     created_at: now,
     updated_at: now
   };
@@ -206,11 +288,11 @@ export async function registerUser(username: string, password: string) {
   database
     .prepare(
       `
-        INSERT INTO users (id, username, password_hash, role, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO users (id, username, password_hash, role, status, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
       `
     )
-    .run(user.id, user.username, user.password_hash, user.role, user.created_at, user.updated_at);
+    .run(user.id, user.username, user.password_hash, user.role, user.status, user.created_at, user.updated_at);
 
   return toAuthUser(user);
 }
@@ -219,6 +301,10 @@ export async function verifyUserCredentials(username: string, password: string) 
   const user = findUserByUsername(username);
 
   if (!user) {
+    return null;
+  }
+
+  if (user.status !== "active") {
     return null;
   }
 
@@ -232,6 +318,10 @@ export function createUserSession(username: string) {
 
   if (!user) {
     throw new AuthHttpError("User not found", 404);
+  }
+
+  if (user.status !== "active") {
+    throw new AuthHttpError("User is disabled", 403);
   }
 
   const token = randomBytes(32).toString("base64url");
@@ -280,7 +370,7 @@ export function getUserSessionFromRequest(request: FastifyRequest): AuthUser | n
   const row = database
     .prepare(
       `
-        SELECT user_sessions.id, user_sessions.user_id, users.username, users.role, user_sessions.expires_at
+        SELECT user_sessions.id, user_sessions.user_id, users.username, users.role, users.status, user_sessions.expires_at
         FROM user_sessions
         INNER JOIN users ON users.id = user_sessions.user_id
         WHERE user_sessions.token_hash = ?
@@ -290,6 +380,11 @@ export function getUserSessionFromRequest(request: FastifyRequest): AuthUser | n
     .get(hashSessionToken(token)) as UserSessionRow | undefined;
 
   if (!row) {
+    return null;
+  }
+
+  if (row.status !== "active") {
+    database.prepare("DELETE FROM user_sessions WHERE id = ?").run(row.id);
     return null;
   }
 
@@ -303,4 +398,119 @@ export function getUserSessionFromRequest(request: FastifyRequest): AuthUser | n
 
 export function getUserSessionTokenFromRequest(request: FastifyRequest) {
   return getCookie(request, SESSION_COOKIE_NAME);
+}
+
+export function listAdminUsers() {
+  const rows = database
+    .prepare(
+      `
+        SELECT id, username, password_hash, role, status, created_at, updated_at
+        FROM users
+        ORDER BY role ASC, created_at DESC
+      `
+    )
+    .all() as unknown as UserRow[];
+
+  return rows.map(toAdminUser);
+}
+
+export async function createAdminUser(input: AdminUserMutationInput) {
+  const username = normalizeUsername(input.username);
+
+  if (!username) {
+    throw new AuthHttpError("Username is required", 400);
+  }
+
+  if (findUserByUsername(username)) {
+    throw new AuthHttpError("Username already exists", 409);
+  }
+
+  const now = new Date().toISOString();
+  const user: UserRow = {
+    id: randomUUID(),
+    username,
+    password_hash: await hashPassword(input.password),
+    role: input.role,
+    status: input.status ?? "active",
+    created_at: now,
+    updated_at: now
+  };
+
+  database
+    .prepare(
+      `
+        INSERT INTO users (id, username, password_hash, role, status, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `
+    )
+    .run(user.id, user.username, user.password_hash, user.role, user.status, user.created_at, user.updated_at);
+
+  return toAdminUser(user);
+}
+
+export function updateAdminUser(userId: string, input: AdminUserUpdateInput, currentUsername: string) {
+  const user = ensureUserExists(userId);
+
+  ensureCanModifyUser(user, currentUsername, input);
+
+  const role = input.role ?? user.role;
+  const status = input.status ?? user.status;
+  const updatedAt = new Date().toISOString();
+
+  database
+    .prepare(
+      `
+        UPDATE users
+        SET role = ?, status = ?, updated_at = ?
+        WHERE id = ?
+      `
+    )
+    .run(role, status, updatedAt, user.id);
+
+  if (status !== "active" || role !== user.role) {
+    database.prepare("DELETE FROM user_sessions WHERE user_id = ?").run(user.id);
+  }
+
+  return toAdminUser({
+    ...user,
+    role,
+    status,
+    updated_at: updatedAt
+  });
+}
+
+export async function updateAdminUserPassword(userId: string, password: string) {
+  const user = ensureUserExists(userId);
+  const updatedAt = new Date().toISOString();
+
+  database
+    .prepare(
+      `
+        UPDATE users
+        SET password_hash = ?, updated_at = ?
+        WHERE id = ?
+      `
+    )
+    .run(await hashPassword(password), updatedAt, user.id);
+  database.prepare("DELETE FROM user_sessions WHERE user_id = ?").run(user.id);
+
+  return toAdminUser({
+    ...user,
+    updated_at: updatedAt
+  });
+}
+
+export function deleteAdminUser(userId: string, currentUsername: string) {
+  const user = ensureUserExists(userId);
+
+  ensureCanModifyUser(user, currentUsername, {
+    status: "disabled",
+    role: "user"
+  });
+
+  database.prepare("DELETE FROM users WHERE id = ?").run(user.id);
+
+  return {
+    id: user.id
+  };
 }

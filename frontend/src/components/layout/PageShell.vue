@@ -4,7 +4,9 @@
       <slot />
     </div>
     <aside v-if="withSidebar" class="page-shell__sidebar">
-      <SidebarPanel />
+      <slot name="sidebar">
+        <SidebarPanel />
+      </slot>
     </aside>
   </section>
 </template>

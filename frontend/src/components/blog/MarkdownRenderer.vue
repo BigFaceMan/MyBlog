@@ -13,6 +13,7 @@ import typescript from "highlight.js/lib/languages/typescript";
 import xml from "highlight.js/lib/languages/xml";
 import MarkdownIt from "markdown-it";
 import { computed } from "vue";
+import { createHeadingId, type HeadingIdCounts } from "@/utils/markdownHeadings";
 
 const props = defineProps<{
   content: string;
@@ -56,6 +57,21 @@ const markdown: MarkdownIt = new MarkdownIt({
   }
 });
 
+markdown.core.ruler.push("heading_ids", (state) => {
+  const counts: HeadingIdCounts = new Map();
+
+  state.tokens.forEach((token, index) => {
+    if (token.type !== "heading_open") {
+      return;
+    }
+
+    const inlineToken = state.tokens[index + 1];
+    const text = inlineToken?.type === "inline" ? inlineToken.content : "";
+
+    token.attrSet("id", createHeadingId(text, counts));
+  });
+});
+
 const html = computed(() => markdown.render(props.content));
 </script>
 
@@ -69,6 +85,7 @@ const html = computed(() => markdown.render(props.content));
 .markdown-body :deep(h1),
 .markdown-body :deep(h2),
 .markdown-body :deep(h3) {
+  scroll-margin-top: calc(var(--header-height) + 24px);
   margin: 1.7em 0 0.75em;
   line-height: 1.35;
 }

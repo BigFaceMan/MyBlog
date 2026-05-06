@@ -21,12 +21,12 @@ export function seedDatabaseIfNeeded() {
 
   if (categoryCount === 0) {
     const insertCategory = database.prepare(`
-      INSERT INTO categories (id, name, slug, description)
-      VALUES (?, ?, ?, ?)
+      INSERT INTO categories (id, name, slug, description, parent_id)
+      VALUES (?, ?, ?, ?, ?)
     `);
 
     for (const category of categories) {
-      insertCategory.run(category.id, category.name, category.slug, category.description ?? null);
+      insertCategory.run(category.id, category.name, category.slug, category.description ?? null, category.parentId ?? null);
     }
   }
 

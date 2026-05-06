@@ -1,17 +1,19 @@
 <template>
-  <PageShell :with-sidebar="false">
+  <AdminLayout>
     <section class="taxonomy-page">
       <header class="taxonomy-header">
         <div>
           <p>后台</p>
           <h1>{{ taxonomyConfig.title }}</h1>
-          <AdminNav class="taxonomy-header__nav" />
         </div>
       </header>
 
-      <form class="taxonomy-create" @submit.prevent="createItem">
+      <form :class="['taxonomy-create', { 'taxonomy-create--category': isCategoryMode }]" @submit.prevent="createItem">
         <el-input v-model="createForm.name" clearable :placeholder="`${taxonomyConfig.label}名称`" />
         <el-input v-model="createForm.slug" clearable placeholder="slug，可留空自动生成" />
+        <el-select v-if="isCategoryMode" v-model="createForm.parentId" clearable placeholder="父级类别，可选">
+          <el-option v-for="category in parentOptions" :key="category.id" :label="taxonomyOptionLabel(category)" :value="category.id" />
+        </el-select>
         <el-input v-model="createForm.description" clearable placeholder="描述，可选" />
         <el-button type="primary" native-type="submit" :loading="saving">新增{{ taxonomyConfig.label }}</el-button>
       </form>
@@ -19,17 +21,25 @@
       <StateBlock v-if="loading" type="loading" :title="`正在加载${taxonomyConfig.label}`" />
       <StateBlock v-else-if="error" type="error" title="加载失败" :description="error" action-text="重试" @action="loadItems" />
       <section v-else class="taxonomy-table">
-        <el-table :data="items" row-key="id" empty-text="暂无数据">
+        <el-table :data="displayItems" row-key="id" empty-text="暂无数据">
           <el-table-column label="名称" min-width="180">
             <template #default="{ row }">
               <el-input v-if="editingId === row.id" v-model="editForm.name" size="small" />
-              <strong v-else>{{ row.name }}</strong>
+              <strong v-else class="taxonomy-name" :style="{ '--depth': String(row.depth ?? 0) }">{{ row.name }}</strong>
             </template>
           </el-table-column>
           <el-table-column label="Slug" min-width="180">
             <template #default="{ row }">
               <el-input v-if="editingId === row.id" v-model="editForm.slug" size="small" />
               <span v-else class="muted">{{ row.slug }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column v-if="isCategoryMode" label="父级" min-width="180">
+            <template #default="{ row }">
+              <el-select v-if="editingId === row.id" v-model="editForm.parentId" clearable size="small" placeholder="无父级">
+                <el-option v-for="category in editParentOptions" :key="category.id" :label="taxonomyOptionLabel(category)" :value="category.id" />
+              </el-select>
+              <span v-else class="muted">{{ parentName(row.parentId) }}</span>
             </template>
           </el-table-column>
           <el-table-column label="描述" min-width="260" show-overflow-tooltip>
@@ -56,7 +66,7 @@
         </el-table>
       </section>
     </section>
-  </PageShell>
+  </AdminLayout>
 </template>
 
 <script setup lang="ts">
@@ -71,10 +81,10 @@ import {
   updateAdminTag,
   type TaxonomyPayload
 } from "@/api/admin";
-import AdminNav from "@/components/admin/AdminNav.vue";
+import AdminLayout from "@/components/admin/AdminLayout.vue";
 import StateBlock from "@/components/common/StateBlock.vue";
-import PageShell from "@/components/layout/PageShell.vue";
 import type { TaxonomyItem } from "@/types/blog";
+import { flattenTaxonomy, taxonomyOptionLabel } from "@/utils/taxonomy";
 import { Delete, Edit } from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { computed, reactive, ref, watch } from "vue";
@@ -101,11 +111,13 @@ const editingId = ref("");
 const createForm = reactive({
   name: "",
   slug: "",
+  parentId: "",
   description: ""
 });
 const editForm = reactive({
   name: "",
   slug: "",
+  parentId: "",
   description: ""
 });
 
@@ -132,6 +144,51 @@ const taxonomyConfig = computed<TaxonomyConfig>(() => {
     remove: deleteAdminTag
   };
 });
+const isCategoryMode = computed(() => taxonomyConfig.value.kind === "categories");
+const displayItems = computed(() => (isCategoryMode.value ? flattenTaxonomy(items.value) : items.value));
+const parentOptions = computed(() => (isCategoryMode.value ? displayItems.value : []));
+const editParentOptions = computed(() => {
+  if (!isCategoryMode.value || !editingId.value) {
+    return parentOptions.value;
+  }
+
+  const editingItem = findTaxonomyItem(items.value, editingId.value);
+  const excludedIds = new Set([editingId.value, ...collectChildIds(editingItem)]);
+
+  return parentOptions.value.filter((item) => !excludedIds.has(item.id));
+});
+
+const findTaxonomyItem = (source: TaxonomyItem[], id: string): TaxonomyItem | null => {
+  for (const item of source) {
+    if (item.id === id) {
+      return item;
+    }
+
+    const matchedChild = findTaxonomyItem(item.children ?? [], id);
+
+    if (matchedChild) {
+      return matchedChild;
+    }
+  }
+
+  return null;
+};
+
+const collectChildIds = (item: TaxonomyItem | null): string[] => {
+  if (!item) {
+    return [];
+  }
+
+  return (item.children ?? []).flatMap((child) => [child.id, ...collectChildIds(child)]);
+};
+
+const parentName = (parentId?: string | null) => {
+  if (!parentId) {
+    return "无";
+  }
+
+  return displayItems.value.find((item) => item.id === parentId)?.name ?? "无";
+};
 
 const toPayload = (form: typeof createForm): TaxonomyPayload => {
   const payload: TaxonomyPayload = {
@@ -148,12 +205,17 @@ const toPayload = (form: typeof createForm): TaxonomyPayload => {
     payload.description = description;
   }
 
+  if (isCategoryMode.value) {
+    payload.parentId = form.parentId || null;
+  }
+
   return payload;
 };
 
 const resetCreateForm = () => {
   createForm.name = "";
   createForm.slug = "";
+  createForm.parentId = "";
   createForm.description = "";
 };
 
@@ -196,6 +258,7 @@ const startEdit = (item: TaxonomyItem) => {
   editingId.value = item.id;
   editForm.name = item.name;
   editForm.slug = item.slug;
+  editForm.parentId = item.parentId ?? "";
   editForm.description = item.description ?? "";
 };
 
@@ -287,15 +350,15 @@ watch(
   line-height: 1.15;
 }
 
-.taxonomy-header__nav {
-  margin-top: 14px;
-}
-
 .taxonomy-create {
   display: grid;
-  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr) minmax(0, 1.3fr) auto;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
   gap: 12px;
   padding: 16px;
+}
+
+.taxonomy-create--category {
+  grid-template-columns: repeat(4, minmax(0, 1fr)) auto;
 }
 
 .taxonomy-table {
@@ -305,6 +368,11 @@ watch(
 
 .muted {
   color: var(--text-secondary);
+}
+
+.taxonomy-name {
+  display: inline-block;
+  padding-left: calc(var(--depth) * 18px);
 }
 
 .row-actions {

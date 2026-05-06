@@ -4,12 +4,17 @@ import {
   AuthHttpError,
   buildClearSessionCookie,
   buildSessionCookie,
+  createAdminUser,
   createUserSession,
   deleteExpiredUserSessions,
+  deleteAdminUser,
   deleteUserSessionByToken,
   getUserSessionFromRequest,
   getUserSessionTokenFromRequest,
+  listAdminUsers,
   registerUser,
+  updateAdminUser,
+  updateAdminUserPassword,
   verifyUserCredentials
 } from "./auth.service.js";
 import { fail, ok } from "../../utils/response.js";
@@ -28,6 +33,22 @@ const passwordSchema = z
 
 const authPayloadSchema = z.object({
   username: usernameSchema,
+  password: passwordSchema
+});
+
+const adminUserPayloadSchema = z.object({
+  username: usernameSchema,
+  password: passwordSchema,
+  role: z.enum(["root", "user"]).default("user"),
+  status: z.enum(["active", "disabled"]).default("active")
+});
+
+const adminUserUpdateSchema = z.object({
+  role: z.enum(["root", "user"]).optional(),
+  status: z.enum(["active", "disabled"]).optional()
+});
+
+const passwordPayloadSchema = z.object({
   password: passwordSchema
 });
 
@@ -102,4 +123,57 @@ export async function registerAuthRoutes(app: FastifyInstance) {
   app.post("/api/admin/auth/login", loginHandler);
   app.post("/api/admin/auth/logout", logoutHandler);
   app.get("/api/admin/auth/me", meHandler);
+
+  app.get("/api/admin/users", async () => {
+    return ok(listAdminUsers());
+  });
+
+  app.post("/api/admin/users", async (request, reply) => {
+    const payload = adminUserPayloadSchema.parse(request.body);
+
+    try {
+      const user = await createAdminUser(payload);
+      reply.code(201);
+      return ok(user, "created");
+    } catch (error) {
+      return sendAuthError(error, reply);
+    }
+  });
+
+  app.patch("/api/admin/users/:id", async (request, reply) => {
+    const params = z.object({ id: z.string() }).parse(request.params);
+    const payload = adminUserUpdateSchema.parse(request.body);
+    const currentUser = getUserSessionFromRequest(request);
+
+    try {
+      const user = updateAdminUser(params.id, payload, currentUser?.username ?? "");
+      return ok(user, "updated");
+    } catch (error) {
+      return sendAuthError(error, reply);
+    }
+  });
+
+  app.patch("/api/admin/users/:id/password", async (request, reply) => {
+    const params = z.object({ id: z.string() }).parse(request.params);
+    const payload = passwordPayloadSchema.parse(request.body);
+
+    try {
+      const user = await updateAdminUserPassword(params.id, payload.password);
+      return ok(user, "updated");
+    } catch (error) {
+      return sendAuthError(error, reply);
+    }
+  });
+
+  app.delete("/api/admin/users/:id", async (request, reply) => {
+    const params = z.object({ id: z.string() }).parse(request.params);
+    const currentUser = getUserSessionFromRequest(request);
+
+    try {
+      const result = deleteAdminUser(params.id, currentUser?.username ?? "");
+      return ok(result, "deleted");
+    } catch (error) {
+      return sendAuthError(error, reply);
+    }
+  });
 }

@@ -1,11 +1,10 @@
 <template>
-  <PageShell :with-sidebar="false">
+  <AdminLayout>
     <section class="admin-page">
       <header class="admin-header">
         <div>
           <p>后台</p>
           <h1>文章管理</h1>
-          <AdminNav class="admin-header__nav" />
         </div>
         <div class="admin-header__actions">
           <el-button plain :icon="SwitchButton" @click="handleLogout">退出登录</el-button>
@@ -70,14 +69,13 @@
         </div>
       </section>
     </section>
-  </PageShell>
+  </AdminLayout>
 </template>
 
 <script setup lang="ts">
 import { deleteAdminArticle, getAdminArticles, updateAdminArticleStatus } from "@/api/admin";
-import AdminNav from "@/components/admin/AdminNav.vue";
+import AdminLayout from "@/components/admin/AdminLayout.vue";
 import StateBlock from "@/components/common/StateBlock.vue";
-import PageShell from "@/components/layout/PageShell.vue";
 import { useAuthStore } from "@/stores/auth";
 import type { ArticleStatus, ArticleSummary, PaginatedResult } from "@/types/blog";
 import { formatDate } from "@/utils/date";
@@ -207,10 +205,6 @@ watch([currentPage, statusFilter, keyword], loadArticles, {
   color: var(--text-primary);
   font-size: 30px;
   line-height: 1.15;
-}
-
-.admin-header__nav {
-  margin-top: 14px;
 }
 
 .admin-header__actions {

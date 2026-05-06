@@ -1,17 +1,31 @@
 <template>
-  <section class="sidebar-card">
+  <section class="sidebar-card taxonomy-card">
     <h2 class="sidebar-card__title">
-      <CollectionTag :size="20" />
-      {{ t("sidebar.taxonomy") }}
+      <Folder :size="16" />
+      {{ t("sidebar.categories") }}
+      <ArrowRight class="taxonomy-card__arrow" :size="15" />
     </h2>
-    <div class="taxonomy-card__section">
-      <RouterLink v-for="category in categories" :key="category.id" class="taxonomy-card__link" :to="`/categories/${category.slug}`">
-        {{ category.name }}
-        <span>{{ category.count }}</span>
+    <div class="taxonomy-card__categories">
+      <RouterLink
+        v-for="category in flatCategories"
+        :key="category.id"
+        class="taxonomy-card__category"
+        :style="{ '--depth': String(category.depth ?? 0) }"
+        :to="`/categories/${category.slug}`"
+      >
+        <span>{{ category.name }}</span>
+        <strong>{{ category.count ?? 0 }}</strong>
       </RouterLink>
     </div>
+  </section>
+
+  <section class="sidebar-card taxonomy-card">
+    <h2 class="sidebar-card__title">
+      <PriceTag :size="16" />
+      {{ t("sidebar.tags") }}
+    </h2>
     <div class="taxonomy-card__tags">
-      <RouterLink v-for="tag in tags" :key="tag.id" class="taxonomy-card__tag" :to="`/tags/${tag.slug}`">
+      <RouterLink v-for="(tag, index) in tags" :key="tag.id" class="taxonomy-card__tag" :style="tagStyle(tag, index)" :to="`/tags/${tag.slug}`">
         {{ tag.name }}
       </RouterLink>
     </div>
@@ -21,13 +35,21 @@
 <script setup lang="ts">
 import { getCategories, getTags } from "@/api/blog";
 import type { TaxonomyItem } from "@/types/blog";
-import { CollectionTag } from "@element-plus/icons-vue";
-import { onMounted, ref } from "vue";
+import { flattenTaxonomy } from "@/utils/taxonomy";
+import { ArrowRight, Folder, PriceTag } from "@element-plus/icons-vue";
+import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 
 const { t } = useI18n();
 const categories = ref<TaxonomyItem[]>([]);
 const tags = ref<TaxonomyItem[]>([]);
+const flatCategories = computed(() => flattenTaxonomy(categories.value));
+const tagColors = ["#41b76a", "#2563eb", "#7c3aed", "#be123c", "#0891b2", "#4b5563", "#16a34a", "#9333ea"];
+
+const tagStyle = (tag: TaxonomyItem, index: number) => ({
+  color: tagColors[index % tagColors.length],
+  fontSize: `${Math.min(18, 13 + Math.max(0, tag.count ?? 0) * 1.3)}px`
+});
 
 onMounted(async () => {
   const [categoryResult, tagResult] = await Promise.all([getCategories(), getTags()]);
@@ -37,53 +59,67 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.taxonomy-card__section {
-  display: grid;
-  gap: 8px;
-  margin-bottom: 16px;
+.taxonomy-card__arrow {
+  flex: 0 0 15px;
+  width: 15px;
+  height: 15px;
+  margin-left: auto;
+  color: var(--text-secondary);
 }
 
-.taxonomy-card__link {
-  display: flex;
+.taxonomy-card :deep(.sidebar-card__title) {
+  gap: 8px;
+  margin-bottom: 16px;
+  font-size: 18px;
+  font-weight: 650;
+}
+
+.taxonomy-card__categories {
+  display: grid;
+  gap: 8px;
+}
+
+.taxonomy-card__category {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
   align-items: center;
-  justify-content: space-between;
-  padding: 9px 10px;
+  min-height: 26px;
+  padding-left: calc((var(--depth) * 16px));
   color: var(--text-primary);
+  font-size: 14px;
+  line-height: 1.4;
   text-decoration: none;
-  border: 1px solid transparent;
-  border-radius: 6px;
   transition: var(--animation-fast);
 }
 
-.taxonomy-card__link:hover {
+.taxonomy-card__category:hover,
+.taxonomy-card__category.router-link-active {
   color: var(--primary-color);
-  background: var(--primary-soft);
-  border-color: var(--primary-border);
 }
 
-.taxonomy-card__link span {
-  color: var(--text-secondary);
+.taxonomy-card__category strong {
+  color: var(--text-regular);
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .taxonomy-card__tags {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 7px 9px;
+  align-items: baseline;
 }
 
 .taxonomy-card__tag {
-  padding: 6px 9px;
   color: var(--text-regular);
-  font-size: 13px;
+  line-height: 1.35;
   text-decoration: none;
-  background: var(--surface-muted);
-  border: 1px solid var(--border-color);
-  border-radius: 999px;
   transition: var(--animation-fast);
 }
 
-.taxonomy-card__tag:hover {
-  color: var(--primary-color);
-  border-color: var(--primary-border);
+.taxonomy-card__tag:hover,
+.taxonomy-card__tag.router-link-active {
+  color: var(--primary-color) !important;
 }
 </style>

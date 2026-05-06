@@ -18,7 +18,9 @@ database.exec(`
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     slug TEXT NOT NULL UNIQUE,
-    description TEXT
+    description TEXT,
+    parent_id TEXT,
+    FOREIGN KEY (parent_id) REFERENCES categories (id) ON DELETE SET NULL
   );
 
   CREATE TABLE IF NOT EXISTS tags (
@@ -74,6 +76,7 @@ database.exec(`
     username TEXT NOT NULL UNIQUE,
     password_hash TEXT NOT NULL,
     role TEXT NOT NULL CHECK (role IN ('root', 'user')),
+    status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'disabled')),
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
   );
@@ -104,6 +107,20 @@ database.exec(`
   CREATE INDEX IF NOT EXISTS idx_user_sessions_expires_at ON user_sessions (expires_at);
   CREATE INDEX IF NOT EXISTS idx_admin_sessions_expires_at ON admin_sessions (expires_at);
 `);
+
+const categoryColumns = database.prepare("PRAGMA table_info(categories)").all() as Array<{ name: string }>;
+
+if (!categoryColumns.some((column) => column.name === "parent_id")) {
+  database.exec("ALTER TABLE categories ADD COLUMN parent_id TEXT REFERENCES categories (id) ON DELETE SET NULL");
+}
+
+database.exec("CREATE INDEX IF NOT EXISTS idx_categories_parent_id ON categories (parent_id)");
+
+const userColumns = database.prepare("PRAGMA table_info(users)").all() as Array<{ name: string }>;
+
+if (!userColumns.some((column) => column.name === "status")) {
+  database.exec("ALTER TABLE users ADD COLUMN status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'disabled'))");
+}
 
 export function getDatabase() {
   return database;

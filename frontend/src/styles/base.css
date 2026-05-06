@@ -76,6 +76,13 @@ img {
   font-weight: 700;
 }
 
+.sidebar-card__title > svg {
+  display: block;
+  flex: 0 0 18px;
+  width: 18px;
+  height: 18px;
+}
+
 .section-header {
   padding: 26px 30px;
   background: var(--card-bg);

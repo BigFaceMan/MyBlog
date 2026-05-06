@@ -1,5 +1,5 @@
 <template>
-  <article class="article-card">
+  <article :class="['article-card', { 'article-card--reversed': reversed }]">
     <RouterLink class="article-card__cover-link" :to="`/articles/${article.slug}`" :aria-label="article.title">
       <img class="article-card__cover" :src="article.cover" :alt="article.title" loading="lazy" />
     </RouterLink>
@@ -22,6 +22,7 @@ import { useI18n } from "vue-i18n";
 
 defineProps<{
   article: ArticleSummary;
+  reversed?: boolean;
 }>();
 
 const { t } = useI18n();
@@ -39,6 +40,10 @@ const { t } = useI18n();
   transition: var(--animation-fast);
 }
 
+.article-card--reversed {
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 42%);
+}
+
 .article-card:hover {
   border-color: var(--primary-border);
   box-shadow: var(--shadow-card-hover);
@@ -49,6 +54,14 @@ const { t } = useI18n();
   display: block;
   min-height: 224px;
   background: var(--surface-muted);
+}
+
+.article-card--reversed .article-card__cover-link {
+  order: 2;
+}
+
+.article-card--reversed .article-card__body {
+  order: 1;
 }
 
 .article-card__cover {
@@ -113,6 +126,11 @@ const { t } = useI18n();
 @media (max-width: 700px) {
   .article-card {
     grid-template-columns: 1fr;
+  }
+
+  .article-card--reversed .article-card__cover-link,
+  .article-card--reversed .article-card__body {
+    order: initial;
   }
 
   .article-card__cover,
