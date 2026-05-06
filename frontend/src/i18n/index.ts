@@ -20,6 +20,9 @@ const messages = {
       search: "Search",
       about: "关于",
       admin: "后台",
+      login: "登录",
+      logout: "退出登录",
+      register: "注册",
       mine: "我的"
     },
     sidebar: {

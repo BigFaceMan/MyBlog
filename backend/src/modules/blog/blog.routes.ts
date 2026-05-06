@@ -2,18 +2,25 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import {
   createArticle,
+  createCategory,
   createTag,
   deleteArticle,
+  deleteCategory,
+  deleteTag,
   getAdminArticleById,
   getArticleBySlug,
   listArchive,
   listAdminArticles,
+  listAdminCategories,
+  listAdminTags,
   listArticles,
   listCategories,
   listTags,
   searchArticles,
   updateArticle,
-  updateArticleStatus
+  updateArticleStatus,
+  updateCategory,
+  updateTag
 } from "../../data/repository.js";
 import { fail, ok } from "../../utils/response.js";
 
@@ -65,6 +72,17 @@ const tagPayloadSchema = z.object({
     .trim()
     .max(80)
     .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "Tag slug can only contain lowercase letters, numbers and hyphens")
+    .optional(),
+  description: z.string().trim().max(200).optional()
+});
+
+const categoryPayloadSchema = z.object({
+  name: z.string().trim().min(1, "Category name is required").max(60),
+  slug: z
+    .string()
+    .trim()
+    .max(80)
+    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "Category slug can only contain lowercase letters, numbers and hyphens")
     .optional(),
   description: z.string().trim().max(200).optional()
 });
@@ -126,6 +144,56 @@ export async function registerBlogRoutes(app: FastifyInstance) {
 
     reply.code(201);
     return ok(tag, "created");
+  });
+
+  app.get("/api/admin/tags", async () => {
+    const result = listAdminTags();
+
+    return ok(result);
+  });
+
+  app.put("/api/admin/tags/:id", async (request) => {
+    const params = z.object({ id: z.string() }).parse(request.params);
+    const payload = tagPayloadSchema.parse(request.body);
+    const tag = updateTag(params.id, payload);
+
+    return ok(tag, "updated");
+  });
+
+  app.delete("/api/admin/tags/:id", async (request) => {
+    const params = z.object({ id: z.string() }).parse(request.params);
+    const result = deleteTag(params.id);
+
+    return ok(result, "deleted");
+  });
+
+  app.get("/api/admin/categories", async () => {
+    const result = listAdminCategories();
+
+    return ok(result);
+  });
+
+  app.post("/api/admin/categories", async (request, reply) => {
+    const payload = categoryPayloadSchema.parse(request.body);
+    const category = createCategory(payload);
+
+    reply.code(201);
+    return ok(category, "created");
+  });
+
+  app.put("/api/admin/categories/:id", async (request) => {
+    const params = z.object({ id: z.string() }).parse(request.params);
+    const payload = categoryPayloadSchema.parse(request.body);
+    const category = updateCategory(params.id, payload);
+
+    return ok(category, "updated");
+  });
+
+  app.delete("/api/admin/categories/:id", async (request) => {
+    const params = z.object({ id: z.string() }).parse(request.params);
+    const result = deleteCategory(params.id);
+
+    return ok(result, "deleted");
   });
 
   app.get("/api/articles", async (request) => {

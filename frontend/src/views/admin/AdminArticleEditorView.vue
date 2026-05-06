@@ -5,6 +5,7 @@
         <div>
           <p>后台</p>
           <h1>{{ isEdit ? "编辑文章" : "新建文章" }}</h1>
+          <AdminNav class="editor-header__nav" />
         </div>
         <div class="header-actions">
           <el-button @click="router.push('/admin')">返回列表</el-button>
@@ -91,6 +92,7 @@
 
 <script setup lang="ts">
 import { createAdminArticle, createAdminTag, getAdminArticle, updateAdminArticle } from "@/api/admin";
+import AdminNav from "@/components/admin/AdminNav.vue";
 import { getCategories, getTags } from "@/api/blog";
 import MarkdownRenderer from "@/components/blog/MarkdownRenderer.vue";
 import StateBlock from "@/components/common/StateBlock.vue";
@@ -379,6 +381,10 @@ watch(
   color: var(--text-primary);
   font-size: 30px;
   line-height: 1.15;
+}
+
+.editor-header__nav {
+  margin-top: 14px;
 }
 
 .header-actions {

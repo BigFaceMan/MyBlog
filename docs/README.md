@@ -15,12 +15,15 @@
 - `frontend/`: Vue 3 + Vite + TypeScript 单页应用
 - `backend/`: Fastify + TypeScript API 服务
 - `backend/storage/blog.sqlite`: SQLite 持久化文件，首次启动自动创建
+- `.env.example`: root 用户和 session 配置样例
 
 开发模式下：
 
 - 前端运行在 `http://localhost:5173`
 - 后端运行在 `http://localhost:3000`
 - 前端通过 Vite 代理把 `/api` 请求转发到后端
+
+登录入口是 `http://localhost:5173/login`，注册入口是 `http://localhost:5173/register`。只有 root 用户登录后导航栏才会显示后台入口，公开博客页面无需登录即可访问。
 
 ## 适用范围
 

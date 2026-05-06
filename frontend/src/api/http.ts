@@ -12,12 +12,16 @@ export class HttpError extends Error {
 }
 
 export async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const headers = new Headers(init?.headers);
+
+  if (init?.body && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
+
   const response = await fetch(`${API_BASE}${path}`, {
-    headers: {
-      "Content-Type": "application/json",
-      ...init?.headers
-    },
-    ...init
+    ...init,
+    credentials: init?.credentials ?? "include",
+    headers
   });
 
   const payload = (await response.json()) as ApiResponse<T>;

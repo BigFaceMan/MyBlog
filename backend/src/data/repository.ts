@@ -22,6 +22,12 @@ export interface TagMutationInput {
   description?: string;
 }
 
+export interface CategoryMutationInput {
+  name: string;
+  slug?: string;
+  description?: string;
+}
+
 export class RepositoryHttpError extends Error {
   constructor(
     message: string,
@@ -257,6 +263,19 @@ function getTagById(tagId: string) {
   return row ? toTaxonomyItem(row) : null;
 }
 
+function getTagRowById(tagId: string) {
+  return database
+    .prepare(
+      `
+        SELECT id, name, slug, description
+        FROM tags
+        WHERE id = ?
+        LIMIT 1
+      `
+    )
+    .get(tagId) as TagRow | undefined;
+}
+
 function getTagByName(name: string) {
   const row = database
     .prepare(
@@ -285,24 +304,110 @@ function getTagRowBySlug(slug: string) {
     .get(slug) as TagRow | undefined;
 }
 
-function buildAvailableTagSlug(name: string, preferredSlug?: string) {
+function getCategoryById(categoryId: string) {
+  const row = getCategoryRowById(categoryId);
+
+  return row ? toTaxonomyItem(row) : null;
+}
+
+function getCategoryRowById(categoryId: string) {
+  return database
+    .prepare(
+      `
+        SELECT id, name, slug, description
+        FROM categories
+        WHERE id = ?
+        LIMIT 1
+      `
+    )
+    .get(categoryId) as CategoryRow | undefined;
+}
+
+function getCategoryByName(name: string) {
+  const row = database
+    .prepare(
+      `
+        SELECT id, name, slug, description
+        FROM categories
+        WHERE lower(name) = lower(?)
+        LIMIT 1
+      `
+    )
+    .get(name) as CategoryRow | undefined;
+
+  return row ? toTaxonomyItem(row) : null;
+}
+
+function getCategoryRowBySlug(slug: string) {
+  return database
+    .prepare(
+      `
+        SELECT id, name, slug, description
+        FROM categories
+        WHERE slug = ?
+        LIMIT 1
+      `
+    )
+    .get(slug) as CategoryRow | undefined;
+}
+
+function buildAvailableTagSlug(name: string, preferredSlug?: string, currentTagId?: string) {
   const baseSlug = slugify(preferredSlug ?? name) || `tag-${randomUUID().slice(0, 8)}`;
   let candidate = baseSlug;
   let suffix = 2;
 
-  while (getTagRowBySlug(candidate)) {
+  while (true) {
+    const existing = getTagRowBySlug(candidate);
+
+    if (!existing || existing.id === currentTagId) {
+      return candidate;
+    }
+
     candidate = `${baseSlug}-${suffix}`;
     suffix += 1;
   }
+}
 
-  return candidate;
+function buildAvailableCategorySlug(name: string, preferredSlug?: string, currentCategoryId?: string) {
+  const baseSlug = slugify(preferredSlug ?? name) || `category-${randomUUID().slice(0, 8)}`;
+  let candidate = baseSlug;
+  let suffix = 2;
+
+  while (true) {
+    const existing = getCategoryRowBySlug(candidate);
+
+    if (!existing || existing.id === currentCategoryId) {
+      return candidate;
+    }
+
+    candidate = `${baseSlug}-${suffix}`;
+    suffix += 1;
+  }
 }
 
 function ensureCategoryExists(categoryId: string) {
-  const category = database.prepare("SELECT id FROM categories WHERE id = ? LIMIT 1").get(categoryId);
+  const category = getCategoryRowById(categoryId);
 
   if (!category) {
     throw new RepositoryHttpError("Category not found", 400);
+  }
+}
+
+function ensureTagExists(tagId: string) {
+  const tag = getTagRowById(tagId);
+
+  if (!tag) {
+    throw new RepositoryHttpError("Tag not found", 404);
+  }
+}
+
+function ensureTaxonomyNameAvailable(
+  itemType: "Tag" | "Category",
+  currentId: string,
+  existingItem: TaxonomyItem | null
+) {
+  if (existingItem && existingItem.id !== currentId) {
+    throw new RepositoryHttpError(`${itemType} name already exists`, 409);
   }
 }
 
@@ -563,7 +668,148 @@ export function createTag(input: TagMutationInput) {
   return tag;
 }
 
-export function listCategories() {
+export function updateTag(tagId: string, input: TagMutationInput) {
+  const currentTag = getTagRowById(tagId);
+
+  if (!currentTag) {
+    throw new RepositoryHttpError("Tag not found", 404);
+  }
+
+  const name = input.name.trim();
+
+  if (!name) {
+    throw new RepositoryHttpError("Tag name is required", 400);
+  }
+
+  ensureTaxonomyNameAvailable("Tag", tagId, getTagByName(name));
+
+  const requestedSlug = input.slug?.trim();
+  const requestedSlugRow = requestedSlug ? getTagRowBySlug(requestedSlug) : undefined;
+
+  if (requestedSlugRow && requestedSlugRow.id !== tagId) {
+    throw new RepositoryHttpError("Tag slug already exists", 409);
+  }
+
+  database
+    .prepare(
+      `
+        UPDATE tags
+        SET name = ?, slug = ?, description = ?
+        WHERE id = ?
+      `
+    )
+    .run(name, buildAvailableTagSlug(name, requestedSlug, tagId), input.description?.trim() || null, tagId);
+
+  return getTagById(tagId);
+}
+
+export function deleteTag(tagId: string) {
+  ensureTagExists(tagId);
+  database.prepare("DELETE FROM tags WHERE id = ?").run(tagId);
+
+  return {
+    id: tagId
+  };
+}
+
+export function createCategory(input: CategoryMutationInput) {
+  const name = input.name.trim();
+
+  if (!name) {
+    throw new RepositoryHttpError("Category name is required", 400);
+  }
+
+  const existingCategory = getCategoryByName(name);
+
+  if (existingCategory) {
+    return existingCategory;
+  }
+
+  const requestedSlug = input.slug?.trim();
+  const requestedSlugRow = requestedSlug ? getCategoryRowBySlug(requestedSlug) : undefined;
+
+  if (requestedSlugRow) {
+    throw new RepositoryHttpError("Category slug already exists", 409);
+  }
+
+  const id = `category-${randomUUID()}`;
+  const slug = buildAvailableCategorySlug(name, requestedSlug);
+  const description = input.description?.trim() || null;
+
+  database
+    .prepare(
+      `
+        INSERT INTO categories (id, name, slug, description)
+        VALUES (?, ?, ?, ?)
+      `
+    )
+    .run(id, name, slug, description);
+
+  const category = getCategoryById(id);
+
+  if (!category) {
+    throw new RepositoryHttpError("Category creation failed", 500);
+  }
+
+  return category;
+}
+
+export function updateCategory(categoryId: string, input: CategoryMutationInput) {
+  const currentCategory = getCategoryRowById(categoryId);
+
+  if (!currentCategory) {
+    throw new RepositoryHttpError("Category not found", 404);
+  }
+
+  const name = input.name.trim();
+
+  if (!name) {
+    throw new RepositoryHttpError("Category name is required", 400);
+  }
+
+  ensureTaxonomyNameAvailable("Category", categoryId, getCategoryByName(name));
+
+  const requestedSlug = input.slug?.trim();
+  const requestedSlugRow = requestedSlug ? getCategoryRowBySlug(requestedSlug) : undefined;
+
+  if (requestedSlugRow && requestedSlugRow.id !== categoryId) {
+    throw new RepositoryHttpError("Category slug already exists", 409);
+  }
+
+  database
+    .prepare(
+      `
+        UPDATE categories
+        SET name = ?, slug = ?, description = ?
+        WHERE id = ?
+      `
+    )
+    .run(name, buildAvailableCategorySlug(name, requestedSlug, categoryId), input.description?.trim() || null, categoryId);
+
+  return getCategoryById(categoryId);
+}
+
+export function deleteCategory(categoryId: string) {
+  if (!getCategoryRowById(categoryId)) {
+    throw new RepositoryHttpError("Category not found", 404);
+  }
+
+  const usage = database
+    .prepare("SELECT COUNT(*) AS count FROM articles WHERE category_id = ?")
+    .get(categoryId) as { count: number };
+
+  if (Number(usage.count) > 0) {
+    throw new RepositoryHttpError("Category is used by articles", 409);
+  }
+
+  database.prepare("DELETE FROM categories WHERE id = ?").run(categoryId);
+
+  return {
+    id: categoryId
+  };
+}
+
+function listCategoriesWithCounts(publishedOnly: boolean) {
   const categoryRows = database
     .prepare(
       `
@@ -573,12 +819,13 @@ export function listCategories() {
       `
     )
     .all() as unknown as CategoryRow[];
+  const whereClause = publishedOnly ? "WHERE status = 'published'" : "";
   const counts = database
     .prepare(
       `
         SELECT category_id, COUNT(*) AS count
         FROM articles
-        WHERE status = 'published'
+        ${whereClause}
         GROUP BY category_id
       `
     )
@@ -591,7 +838,7 @@ export function listCategories() {
   }));
 }
 
-export function listTags() {
+function listTagsWithCounts(publishedOnly: boolean) {
   const tagRows = database
     .prepare(
       `
@@ -601,13 +848,14 @@ export function listTags() {
       `
     )
     .all() as unknown as TagRow[];
+  const whereClause = publishedOnly ? "WHERE a.status = 'published'" : "";
   const counts = database
     .prepare(
       `
         SELECT at.tag_id, COUNT(*) AS count
         FROM article_tags at
         INNER JOIN articles a ON a.id = at.article_id
-        WHERE a.status = 'published'
+        ${whereClause}
         GROUP BY at.tag_id
       `
     )
@@ -618,6 +866,22 @@ export function listTags() {
     ...toTaxonomyItem(tag),
     count: countMap.get(tag.id) ?? 0
   }));
+}
+
+export function listCategories() {
+  return listCategoriesWithCounts(true);
+}
+
+export function listAdminCategories() {
+  return listCategoriesWithCounts(false);
+}
+
+export function listTags() {
+  return listTagsWithCounts(true);
+}
+
+export function listAdminTags() {
+  return listTagsWithCounts(false);
 }
 
 export function listArchive() {

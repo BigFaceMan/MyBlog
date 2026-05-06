@@ -9,10 +9,13 @@
 
 <script setup lang="ts">
 import AppHeader from "@/components/layout/AppHeader.vue";
+import { useAuthStore } from "@/stores/auth";
 import { useSiteStore } from "@/stores/site";
 
+const authStore = useAuthStore();
 const siteStore = useSiteStore();
 
+void authStore.checkSession();
 void siteStore.loadProfile();
 </script>
 

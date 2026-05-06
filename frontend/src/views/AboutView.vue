@@ -78,6 +78,8 @@ void siteStore.loadProfile();
 .about-page {
   display: grid;
   gap: 18px;
+  justify-self: center;
+  width: min(100%, 960px);
 }
 
 .about-hero,

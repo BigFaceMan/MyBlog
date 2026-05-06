@@ -5,8 +5,12 @@
         <div>
           <p>后台</p>
           <h1>文章管理</h1>
+          <AdminNav class="admin-header__nav" />
         </div>
-        <el-button type="primary" :icon="Plus" @click="router.push('/admin/articles/new')">新建文章</el-button>
+        <div class="admin-header__actions">
+          <el-button plain :icon="SwitchButton" @click="handleLogout">退出登录</el-button>
+          <el-button type="primary" :icon="Plus" @click="router.push('/admin/articles/new')">新建文章</el-button>
+        </div>
       </header>
 
       <section class="admin-filters">
@@ -71,16 +75,19 @@
 
 <script setup lang="ts">
 import { deleteAdminArticle, getAdminArticles, updateAdminArticleStatus } from "@/api/admin";
+import AdminNav from "@/components/admin/AdminNav.vue";
 import StateBlock from "@/components/common/StateBlock.vue";
 import PageShell from "@/components/layout/PageShell.vue";
+import { useAuthStore } from "@/stores/auth";
 import type { ArticleStatus, ArticleSummary, PaginatedResult } from "@/types/blog";
 import { formatDate } from "@/utils/date";
-import { Delete, Edit, Plus, View } from "@element-plus/icons-vue";
+import { Delete, Edit, Plus, SwitchButton, View } from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { reactive, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 
 const router = useRouter();
+const authStore = useAuthStore();
 const currentPage = ref(1);
 const loading = ref(false);
 const error = ref("");
@@ -124,6 +131,12 @@ const applySearch = () => {
 
 const handleFilterChange = () => {
   currentPage.value = 1;
+};
+
+const handleLogout = async () => {
+  await authStore.logout();
+  ElMessage.success("已退出登录");
+  await router.replace("/login");
 };
 
 const toggleStatus = async (article: ArticleSummary) => {
@@ -194,6 +207,21 @@ watch([currentPage, statusFilter, keyword], loadArticles, {
   color: var(--text-primary);
   font-size: 30px;
   line-height: 1.15;
+}
+
+.admin-header__nav {
+  margin-top: 14px;
+}
+
+.admin-header__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.admin-header__actions :deep(.el-button + .el-button) {
+  margin-left: 0;
 }
 
 .admin-filters {

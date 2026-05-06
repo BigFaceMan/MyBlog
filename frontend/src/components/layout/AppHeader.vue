@@ -32,10 +32,26 @@
         <User :size="17" />
         <span>{{ t("nav.about") }}</span>
       </RouterLink>
-      <RouterLink class="nav-link" to="/admin">
+      <RouterLink v-if="authStore.isRoot" class="nav-link" to="/admin">
         <EditPen :size="17" />
         <span>{{ t("nav.admin") }}</span>
       </RouterLink>
+      <RouterLink v-if="authStore.checked && !authStore.isAuthenticated" class="nav-link" to="/login">
+        <UserFilled :size="17" />
+        <span>{{ t("nav.login") }}</span>
+      </RouterLink>
+      <el-dropdown v-else-if="authStore.isAuthenticated" trigger="click">
+        <button class="nav-link nav-link--button" type="button">
+          <UserFilled :size="17" />
+          <span>{{ authStore.user?.username }}</span>
+          <ArrowDown :size="14" />
+        </button>
+        <template #dropdown>
+          <el-dropdown-menu>
+            <el-dropdown-item @click="handleLogout">{{ t("nav.logout") }}</el-dropdown-item>
+          </el-dropdown-menu>
+        </template>
+      </el-dropdown>
     </nav>
 
     <button class="mobile-menu" type="button" :aria-label="t('nav.articles')" @click="drawerVisible = true">
@@ -52,23 +68,41 @@
         <RouterLink class="mobile-link" to="/about" @click="drawerVisible = false">{{ t("nav.about") }}</RouterLink>
         <RouterLink class="mobile-link" to="/categories" @click="drawerVisible = false">{{ t("nav.categories") }}</RouterLink>
         <RouterLink class="mobile-link" to="/tags" @click="drawerVisible = false">{{ t("nav.tags") }}</RouterLink>
-        <RouterLink class="mobile-link" to="/admin" @click="drawerVisible = false">{{ t("nav.admin") }}</RouterLink>
+        <RouterLink v-if="authStore.isRoot" class="mobile-link" to="/admin" @click="drawerVisible = false">{{ t("nav.admin") }}</RouterLink>
+        <RouterLink v-if="authStore.checked && !authStore.isAuthenticated" class="mobile-link" to="/login" @click="drawerVisible = false">{{ t("nav.login") }}</RouterLink>
+        <template v-else-if="authStore.isAuthenticated">
+          <span class="mobile-user">{{ authStore.user?.username }}</span>
+          <button class="mobile-link mobile-link--button" type="button" @click="handleLogout">{{ t("nav.logout") }}</button>
+        </template>
       </nav>
     </el-drawer>
   </header>
 </template>
 
 <script setup lang="ts">
+import { useAuthStore } from "@/stores/auth";
 import { useSiteStore } from "@/stores/site";
-import { ArrowDown, Collection, EditPen, House, Menu, Search, User } from "@element-plus/icons-vue";
+import { ArrowDown, Collection, EditPen, House, Menu, Search, User, UserFilled } from "@element-plus/icons-vue";
+import { ElMessage } from "element-plus";
 import { ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
 
 const { t } = useI18n();
 const router = useRouter();
+const authStore = useAuthStore();
 const siteStore = useSiteStore();
 const drawerVisible = ref(false);
+
+const handleLogout = async () => {
+  await authStore.logout();
+  drawerVisible.value = false;
+  ElMessage.success("已退出登录");
+
+  if (router.currentRoute.value.path.startsWith("/admin")) {
+    await router.replace("/login");
+  }
+};
 </script>
 
 <style scoped>
@@ -207,13 +241,28 @@ const drawerVisible = ref(false);
 .mobile-link {
   padding: 12px;
   color: var(--text-primary);
+  font: inherit;
+  text-align: left;
   text-decoration: none;
+  background: transparent;
+  border: 0;
   border-radius: 6px;
 }
 
 .mobile-link.router-link-active {
   color: var(--primary-color);
   background: var(--primary-soft);
+}
+
+.mobile-link--button {
+  cursor: pointer;
+}
+
+.mobile-user {
+  padding: 10px 12px 4px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 700;
 }
 
 @media (max-width: 1180px) {

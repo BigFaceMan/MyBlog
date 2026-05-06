@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory } from "vue-router";
+import { useAuthStore } from "@/stores/auth";
 
 export const router = createRouter({
   history: createWebHistory(),
@@ -49,9 +50,38 @@ export const router = createRouter({
       component: () => import("@/views/AboutView.vue")
     },
     {
+      path: "/login",
+      name: "login",
+      component: () => import("@/views/AuthView.vue")
+    },
+    {
+      path: "/register",
+      name: "register",
+      component: () => import("@/views/AuthView.vue")
+    },
+    {
+      path: "/admin/login",
+      redirect: {
+        path: "/login",
+        query: {
+          redirect: "/admin"
+        }
+      }
+    },
+    {
       path: "/admin",
       name: "admin-articles",
       component: () => import("@/views/admin/AdminArticleListView.vue")
+    },
+    {
+      path: "/admin/tags",
+      name: "admin-tags",
+      component: () => import("@/views/admin/AdminTaxonomyView.vue")
+    },
+    {
+      path: "/admin/categories",
+      name: "admin-categories",
+      component: () => import("@/views/admin/AdminTaxonomyView.vue")
     },
     {
       path: "/admin/articles/new",
@@ -74,4 +104,43 @@ export const router = createRouter({
       top: 0
     };
   }
+});
+
+const resolveAuthRedirect = (value: unknown) => {
+  if (typeof value === "string" && value.startsWith("/") && !value.startsWith("/login") && !value.startsWith("/register")) {
+    return value;
+  }
+
+  return "/";
+};
+
+router.beforeEach(async (to) => {
+  const isAuthRoute = to.name === "login" || to.name === "register";
+  const isProtectedAdminRoute = to.path.startsWith("/admin");
+
+  if (!isAuthRoute && !isProtectedAdminRoute) {
+    return true;
+  }
+
+  const authStore = useAuthStore();
+  const authenticated = await authStore.checkSession();
+
+  if (isAuthRoute) {
+    return authenticated ? resolveAuthRedirect(to.query.redirect) : true;
+  }
+
+  if (!authenticated) {
+    return {
+      name: "login",
+      query: {
+        redirect: to.fullPath
+      }
+    };
+  }
+
+  if (!authStore.isRoot) {
+    return "/";
+  }
+
+  return true;
 });

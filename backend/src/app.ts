@@ -4,6 +4,8 @@ import { ZodError } from "zod";
 import { seedDatabaseIfNeeded } from "./data/bootstrap.js";
 import { RepositoryHttpError } from "./data/repository.js";
 import { closeDatabase, getDatabasePath } from "./lib/database.js";
+import { ensureRootUser, getUserSessionFromRequest } from "./modules/auth/auth.service.js";
+import { registerAuthRoutes } from "./modules/auth/auth.routes.js";
 import { registerBlogRoutes } from "./modules/blog/blog.routes.js";
 import { registerSiteRoutes } from "./modules/site/site.routes.js";
 import { fail } from "./utils/response.js";
@@ -21,11 +23,17 @@ export async function buildApp() {
   });
 
   await app.register(cors, {
-    origin: true
+    origin: true,
+    credentials: true
   });
 
   seedDatabaseIfNeeded();
+  const rootReady = await ensureRootUser();
   app.log.info(`SQLite database ready at ${getDatabasePath()}`);
+
+  if (!rootReady) {
+    app.log.warn("Root user is not initialized. Set ROOT_PASSWORD or ROOT_PASSWORD_HASH to enable backend access.");
+  }
 
   app.setErrorHandler((error, _request, reply) => {
     if (error instanceof ZodError) {
@@ -52,6 +60,25 @@ export async function buildApp() {
     };
   });
 
+  app.addHook("preHandler", async (request, reply) => {
+    const pathname = request.url.split("?")[0] ?? "";
+
+    if (!pathname.startsWith("/api/admin/") || pathname.startsWith("/api/admin/auth/")) {
+      return;
+    }
+
+    const user = getUserSessionFromRequest(request);
+
+    if (!user) {
+      return reply.code(401).send(fail("Unauthorized", 401));
+    }
+
+    if (!user.isRoot) {
+      return reply.code(403).send(fail("Forbidden", 403));
+    }
+  });
+
+  await registerAuthRoutes(app);
   await registerSiteRoutes(app);
   await registerBlogRoutes(app);
 

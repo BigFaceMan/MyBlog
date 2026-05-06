@@ -1,5 +1,5 @@
 <template>
-  <section class="page-shell">
+  <section :class="['page-shell', { 'page-shell--single': !withSidebar }]">
     <div class="page-shell__content">
       <slot />
     </div>
@@ -31,6 +31,10 @@ withDefaults(
   width: min(1240px, calc(100% - 32px));
   margin: 0 auto;
   padding: 42px 0 64px;
+}
+
+.page-shell--single {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .page-shell__content,

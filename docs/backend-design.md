@@ -24,6 +24,8 @@
 - 注册 CORS
 - 触发数据库初始化与种子写入
 - 注册健康检查接口 `/api/health`
+- 注册登录注册接口
+- 通过 `preHandler` 保护 `/api/admin/*`
 - 注册站点接口和博客接口
 - 配置统一错误处理器
 - 在应用关闭时关闭 SQLite 连接
@@ -35,9 +37,10 @@
 ### 3.1 路由模块
 
 - `modules/site/site.routes.ts`
+- `modules/auth/auth.routes.ts`
 - `modules/blog/blog.routes.ts`
 
-`site` 模块负责站点资料和统计数据输出，`blog` 模块同时覆盖：
+`auth` 模块负责用户注册登录、root 初始化、退出和当前会话查询。`site` 模块负责站点资料和统计数据输出，`blog` 模块同时覆盖：
 
 - 公开博客接口
 - 后台管理接口
@@ -50,6 +53,8 @@
 - `data/bootstrap.ts`: 首次启动种子数据写入
 - `data/seed.ts`: 默认分类、标签、站点资料
 - `data/repository.ts`: 仓储访问与核心业务规则
+- `lib/env.ts`: 读取根目录或后端目录 `.env`
+- `lib/password.ts`: scrypt 密码哈希和校验
 
 ## 4. 接口设计
 
@@ -81,15 +86,33 @@
 
 ### 4.3 后台接口
 
+后台文章、标签和类别接口需要 root session。
+
 - `GET /api/admin/articles`
 - `GET /api/admin/articles/:id`
 - `POST /api/admin/articles`
 - `PUT /api/admin/articles/:id`
 - `PATCH /api/admin/articles/:id/status`
 - `DELETE /api/admin/articles/:id`
+- `GET /api/admin/tags`
 - `POST /api/admin/tags`
+- `PUT /api/admin/tags/:id`
+- `DELETE /api/admin/tags/:id`
+- `GET /api/admin/categories`
+- `POST /api/admin/categories`
+- `PUT /api/admin/categories/:id`
+- `DELETE /api/admin/categories/:id`
 
-### 4.4 校验策略
+### 4.4 登录接口
+
+- `POST /api/auth/login`
+- `POST /api/auth/register`
+- `POST /api/auth/logout`
+- `GET /api/auth/me`
+
+登录或注册成功后后端设置 `sspblog_session` HttpOnly cookie。前端不可直接读取该 cookie，只能通过 `/api/auth/me` 判断当前是否已登录。
+
+### 4.5 校验策略
 
 路由层使用 Zod 做参数和请求体校验，包括：
 
@@ -151,6 +174,8 @@ Zod 抛错后由全局错误处理器统一转为 `400`。
 - `article_tags`: 文章和标签多对多关系
 - `site_configs`: 站点配置
 - `social_links`: 社交链接
+- `users`: 用户账户
+- `user_sessions`: 登录 session
 
 ### 6.2 关键约束
 
@@ -160,6 +185,8 @@ Zod 抛错后由全局错误处理器统一转为 `400`。
 - `articles.status` 限制为 `published` 或 `draft`
 - `article_tags` 联合主键防止重复关联
 - 多个外键开启级联删除或引用校验
+- `users.username` 唯一
+- `user_sessions.token_hash` 唯一，数据库只保存 session token 的 HMAC 摘要
 
 ### 6.3 索引
 
@@ -169,6 +196,9 @@ Zod 抛错后由全局错误处理器统一转为 `400`。
 - `idx_articles_category_id`
 - `idx_article_tags_tag_id`
 - `idx_social_links_site_config_id`
+- `idx_users_username`
+- `idx_user_sessions_user_id`
+- `idx_user_sessions_expires_at`
 
 这些索引主要服务于：
 
@@ -176,6 +206,7 @@ Zod 抛错后由全局错误处理器统一转为 `400`。
 - 分类维度查询
 - 标签关联查询
 - 站点社交链接查询
+- 清理过期用户 session
 
 ## 7. 业务规则
 
@@ -197,6 +228,15 @@ Zod 抛错后由全局错误处理器统一转为 `400`。
 
 - 站点基础资料和社交链接来自 `site_configs` 与 `social_links`
 - 文章数、分类数、标签数通过仓储层聚合后返回给前端
+
+### 7.4 用户登录与 root 权限
+
+- 当前支持普通用户注册登录。
+- 默认 root 用户名是 `root`，可通过 `ROOT_USERNAME` 配置。
+- root 密码可配置为 `ROOT_PASSWORD` 明文，或更推荐的 `ROOT_PASSWORD_HASH`。
+- `npm run hash-password -w backend -- <password>` 可生成 scrypt 哈希。
+- session cookie 默认 7 天过期，服务端只持久化 token 摘要。
+- `/api/admin/*` 只有 root 用户可以访问，普通用户会返回 `403`。
 
 ## 8. 错误处理设计
 
@@ -237,7 +277,7 @@ Zod 抛错后由全局错误处理器统一转为 `400`。
 
 ### 风险和不足
 
-- 没有鉴权和权限校验
+- 只有 root/user 两类角色，没有细粒度权限
 - 仓储层文件职责偏重
 - 搜索、筛选、分页没有充分利用 SQL
 - 没有测试覆盖
@@ -245,7 +285,7 @@ Zod 抛错后由全局错误处理器统一转为 `400`。
 
 ## 11. 后端演进建议
 
-- 为后台接口加鉴权
+- 后续如需多人协作，增加更细角色和权限策略
 - 把复杂业务从 repository 拆到 service 层
 - 将分页、搜索、筛选尽量下推到 SQL
 - 为文章搜索引入 SQLite FTS 或外部搜索方案

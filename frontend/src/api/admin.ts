@@ -8,6 +8,12 @@ export interface AdminArticleListParams {
   keyword?: string;
 }
 
+export interface TaxonomyPayload {
+  name: string;
+  slug?: string;
+  description?: string;
+}
+
 const toQuery = <T extends object>(params: T) => {
   const query = new URLSearchParams();
 
@@ -54,4 +60,40 @@ export function deleteAdminArticle(id: string) {
 
 export function createAdminTag(name: string) {
   return request<TaxonomyItem>("/api/admin/tags", toJsonInit("POST", { name }));
+}
+
+export function getAdminTags() {
+  return request<TaxonomyItem[]>("/api/admin/tags");
+}
+
+export function createAdminTagItem(payload: TaxonomyPayload) {
+  return request<TaxonomyItem>("/api/admin/tags", toJsonInit("POST", payload));
+}
+
+export function updateAdminTag(id: string, payload: TaxonomyPayload) {
+  return request<TaxonomyItem>(`/api/admin/tags/${id}`, toJsonInit("PUT", payload));
+}
+
+export function deleteAdminTag(id: string) {
+  return request<{ id: string }>(`/api/admin/tags/${id}`, {
+    method: "DELETE"
+  });
+}
+
+export function getAdminCategories() {
+  return request<TaxonomyItem[]>("/api/admin/categories");
+}
+
+export function createAdminCategory(payload: TaxonomyPayload) {
+  return request<TaxonomyItem>("/api/admin/categories", toJsonInit("POST", payload));
+}
+
+export function updateAdminCategory(id: string, payload: TaxonomyPayload) {
+  return request<TaxonomyItem>(`/api/admin/categories/${id}`, toJsonInit("PUT", payload));
+}
+
+export function deleteAdminCategory(id: string) {
+  return request<{ id: string }>(`/api/admin/categories/${id}`, {
+    method: "DELETE"
+  });
 }

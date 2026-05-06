@@ -69,10 +69,40 @@ database.exec(`
     FOREIGN KEY (site_config_id) REFERENCES site_configs (id) ON DELETE CASCADE
   );
 
+  CREATE TABLE IF NOT EXISTS users (
+    id TEXT PRIMARY KEY,
+    username TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    role TEXT NOT NULL CHECK (role IN ('root', 'user')),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS user_sessions (
+    id TEXT PRIMARY KEY,
+    token_hash TEXT NOT NULL UNIQUE,
+    user_id TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS admin_sessions (
+    id TEXT PRIMARY KEY,
+    token_hash TEXT NOT NULL UNIQUE,
+    username TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL
+  );
+
   CREATE INDEX IF NOT EXISTS idx_articles_status_created_at ON articles (status, created_at DESC);
   CREATE INDEX IF NOT EXISTS idx_articles_category_id ON articles (category_id);
   CREATE INDEX IF NOT EXISTS idx_article_tags_tag_id ON article_tags (tag_id);
   CREATE INDEX IF NOT EXISTS idx_social_links_site_config_id ON social_links (site_config_id);
+  CREATE INDEX IF NOT EXISTS idx_users_username ON users (username);
+  CREATE INDEX IF NOT EXISTS idx_user_sessions_user_id ON user_sessions (user_id);
+  CREATE INDEX IF NOT EXISTS idx_user_sessions_expires_at ON user_sessions (expires_at);
+  CREATE INDEX IF NOT EXISTS idx_admin_sessions_expires_at ON admin_sessions (expires_at);
 `);
 
 export function getDatabase() {
