@@ -2,59 +2,69 @@
 
 ## 1. 总体架构
 
-当前项目是一个轻量博客 MVP，采用前后端分离但同仓库维护的方式：
+当前项目是一个前后端分离、同仓库维护的博客 MVP：
 
-- 前端负责页面渲染、路由切换、管理端编辑交互
-- 后端负责内容查询、用户注册登录、root 后台权限、文章管理、标签管理和站点信息输出
-- SQLite 负责本地持久化，适合单机 MVP 和低运维复杂度场景
+- 前端负责博客展示、登录注册和后台管理界面
+- 后端负责公开内容接口、认证与 session、后台管理接口
+- SQLite 负责本地持久化
 
 ```text
 Browser
   -> Vue 3 SPA (frontend)
   -> /api/*
   -> Fastify API (backend)
-  -> Repository
+  -> Repository / Auth Service
   -> SQLite (backend/storage/blog.sqlite)
 ```
 
-## 2. 代码仓结构
+公开博客和后台管理共用一个 SPA。后台能力当前包括：
+
+- 文章管理
+- 标签管理
+- 类别管理
+- 用户管理
+- 站点资料管理
+
+## 2. 仓库结构
 
 ```text
 sspblog/
   package.json              # workspace 根脚本
-  frontend/                 # 博客站点 + 管理后台 SPA
-  backend/                  # API 服务 + SQLite 数据访问
-  docs/                     # 项目文档
+  frontend/                 # 博客站点 + 后台管理 SPA
+  backend/                  # API 服务 + SQLite
+  docs/                     # 当前实现文档
 ```
 
-根目录通过 npm workspaces 统一管理 `frontend` 和 `backend`，根脚本主要做三件事：
+根脚本主要负责：
 
 - `npm run dev`: 并行启动前后端
 - `npm run build`: 顺序构建 backend 和 frontend
-- `npm run type-check`: 顺序做两端类型检查
+- `npm run type-check`: 顺序执行两端类型检查
 
 ## 3. 运行链路
 
 ### 3.1 开发期链路
 
-1. 访问浏览器中的 Vite 前端应用。
+1. 浏览器访问 Vite 前端应用。
 2. 前端发起 `/api/*` 请求。
-3. Vite dev server 代理请求到 `http://localhost:3000`。
-4. Fastify 路由调用仓储层。
+3. Vite dev server 将请求代理到 `http://localhost:3000`。
+4. Fastify 路由调用仓储层或认证服务。
 5. 仓储层读写 SQLite。
-6. 后端统一返回 `{ code, message, data }` 结构。
+6. 后端统一返回 `{ code, message, data }`。
 
-### 3.2 启动阶段
+### 3.2 后端启动阶段
 
-后端启动流程在 `backend/src/server.ts` 和 `backend/src/app.ts` 中完成：
+后端启动流程集中在 `backend/src/server.ts` 和 `backend/src/app.ts`：
 
-1. 构建 Fastify 实例并开启日志。
-2. 注册 CORS。
-3. 初始化数据库文件和表结构。
-4. 首次启动时写入分类、标签、站点信息和种子文章。
-5. 注册登录注册接口，并用请求钩子保护 `/api/admin/*`。
-6. 注册站点接口与博客接口。
-7. 挂载统一错误处理器和健康检查接口。
+1. 读取 `.env`。
+2. 构建 Fastify 实例并启用日志。
+3. 注册 CORS。
+4. 初始化 SQLite 文件、表和索引。
+5. 在数据为空时写入分类、标签、站点资料种子。
+6. 根据环境变量确保 root 用户存在。
+7. 注册健康检查、认证、站点和博客路由。
+8. 通过全局 `preHandler` 保护 `/api/admin/*`，但放行 `/api/admin/auth/*`。
+9. 配置统一错误处理器。
 
 ## 4. 前后端职责边界
 
@@ -62,64 +72,57 @@ sspblog/
 
 - 路由管理和页面编排
 - 调用 API 并处理加载、空态、错误态
-- 展示博客站点和后台管理界面
-- 维护登录状态，只有 root 登录后才展示后台入口
-- Markdown 内容预览和渲染
-- 基础站点信息缓存
+- 维护登录状态和 root 后台入口
+- Markdown 渲染、代码高亮和文章目录
+- 站点资料缓存
 
 ### 后端职责
 
 - 请求参数校验
-- 文章、分类、标签、归档、搜索的数据聚合
-- 用户注册、登录、退出和 session cookie 校验
-- 后台文章、标签、类别增删改查
-- 标签自动创建
-- 文章阅读时浏览量累加
-- SQLite 数据访问和约束检查
+- 文章、分类、标签、归档和搜索查询
+- 用户注册登录、session 校验和 root 权限控制
+- 后台文章、标签、类别、用户和站点资料管理
+- SQLite 数据访问与业务约束
 
 ## 5. 模块划分
 
 ### 5.1 前端
 
-- `src/router`: 路由定义
+- `src/router`: 路由定义与守卫
 - `src/views`: 页面层
-- `src/components`: 可复用布局、文章、侧栏、状态组件
+- `src/components/layout`: 公共布局
+- `src/components/blog`: 文章展示与 Markdown 渲染
+- `src/components/sidebar`: 侧栏卡片与目录
+- `src/components/admin`: 后台布局与导航
 - `src/api`: API 访问层
 - `src/stores`: Pinia 状态
-- `src/styles`: 全局样式与 Element Plus 主题覆盖
 
 ### 5.2 后端
 
 - `src/server.ts`: 服务启动入口
-- `src/app.ts`: 应用装配
-- `src/modules/*`: 路由模块
-- `src/modules/auth`: 用户登录注册、root 初始化与 session
-- `src/data/repository.ts`: 仓储层和主要业务规则
-- `src/data/bootstrap.ts`: 首次启动数据注入
-- `src/lib/database.ts`: SQLite 初始化和连接管理
-- `src/utils/response.ts`: 响应结构封装
+- `src/app.ts`: 应用装配、错误处理和权限钩子
+- `src/modules/auth`: 登录注册、session、后台用户管理
+- `src/modules/site`: 站点资料接口
+- `src/modules/blog`: 公开博客接口 + 后台内容接口
+- `src/data/repository.ts`: 文章、分类、标签、站点资料仓储与规则
+- `src/data/bootstrap.ts`: 首次启动种子写入
+- `src/lib/database.ts`: SQLite 初始化和连接
+- `src/lib/password.ts`: scrypt 密码哈希
 
-## 6. 当前架构特点
+## 6. 当前实现特点
 
-### 优点
+### 已落地能力
 
-- 简单直接，MVP 成本低
-- 前后端边界清晰，便于独立演进
-- SQLite 和仓储层封装让本地开发门槛很低
-- 管理后台和博客站点共享一套类型和 API 模型，联调成本低
+- 分类支持父子层级，公开分类页和后台编辑都能处理 `parentId`
+- 分类统计会递归汇总子类文章数
+- 分类过滤会自动包含所有后代分类
+- 后台可管理 root / 普通用户，并支持启用、禁用、重置密码
+- 站点资料由后台配置后，前台作者卡片、公告和关于页直接复用
+- 文章列表、搜索和归档返回的是“基于正文生成的预览摘要”，不是数据库原始摘要字段
 
 ### 当前限制
 
-- 后端没有独立 service 层，路由直接依赖仓储函数
-- 搜索、分类过滤、分页主要在内存中过滤，数据量上来后会有性能瓶颈
-- 当前只有 `root` 和普通用户两类角色，没有找回密码、邮箱验证等完整账户体系
-- 文章封面仅支持 URL，没有上传、媒体管理能力
-- 前端公共站点和后台共用一个 SPA，后续权限体系复杂后可能需要拆分
-
-## 7. 建议的演进方向
-
-- 数据量增加后，把搜索、筛选、分页下推到 SQL 层
-- 后续如需多人协作，再增加用户表、角色和更细权限边界
-- 在仓储层之上增加 service 层，承接更复杂的业务编排
-- 拆出内容管理、站点配置、媒体管理等独立模块
-- 为前后端补充接口测试和页面级测试
+- 列表筛选、搜索和分页主要在内存中完成，尚未下推到 SQL
+- 后台和公开站点共用一个 SPA，权限复杂度继续提高后耦合会变重
+- 没有 SSR / SSG、媒体上传、评论、RSS 生成和测试覆盖
+- 数据库里预留了 `admin_sessions` 表，但当前认证流程只使用 `user_sessions`
